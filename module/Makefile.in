@@ -23,7 +23,7 @@ ZFS_MODULE_CPPFLAGS += @KERNEL_DEBUG_CPPFLAGS@
 
 export ZFS_MODULE_CFLAGS ZFS_MODULE_CPPFLAGS
 
-SUBDIR_TARGETS = icp lua
+SUBDIR_TARGETS = icp lua zfs
 
 modules:
 	list='$(SUBDIR_TARGETS)'; for targetdir in $$list; do \
