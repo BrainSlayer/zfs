@@ -19,6 +19,10 @@ extern "C" {
 /*===== dependency =====*/
 #include <stddef.h>   /* size_t */
 
+#define	ZSTD_isError ERR_isError   /* for inlining */
+#define	FSE_isError  ERR_isError
+#define	HUF_isError  ERR_isError
+#define	HIST_isError  ERR_isError
 
 /* =====   ZSTDERRORLIB_API : control library symbols visibility   ===== */
 #ifndef ZSTDERRORLIB_VISIBILITY

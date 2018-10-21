@@ -33,6 +33,7 @@
 #define	ZSTD_STATIC_LINKING_ONLY
 #include <sys/zstd/zstd.h>
 #include <sys/zstd/zstd_errors.h>
+#include <sys/zstd/error_private.h>
 
 
 #define	ZSTD_KMEM_MAGIC		0x20160831
