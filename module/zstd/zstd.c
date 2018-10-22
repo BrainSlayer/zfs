@@ -1,27 +1,37 @@
 /*
- * CDDL HEADER START
+ * Common functions of New Generation Entropy library
+ * Copyright (C) 2016, Yann Collet.
  *
- * The contents of this file are subject to the terms of the
- * Common Development and Distribution License (the "License").
- * You may not use this file except in compliance with the License.
+ * BSD 2-Clause License (http://www.opensource.org/licenses/bsd-license.php)
  *
- * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
- * See the License for the specific language governing permissions
- * and limitations under the License.
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
  *
- * When distributing Covered Code, include this CDDL HEADER in each
- * file and include the License file at usr/src/OPENSOLARIS.LICENSE.
- * If applicable, add the following below this CDDL HEADER, with the
- * fields enclosed by brackets "[]" replaced with your own identifying
- * information: Portions Copyright [yyyy] [name of copyright owner]
+ * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer
+ * Redistributions in binary form must reproduce the above
+ * copyright notice, this list of conditions and the following disclaimer
+ * in the documentation and/or other materials provided with the
+ * distribution.
  *
- * CDDL HEADER END
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 /*
  * Copyright (c) 2016-2018 by Klara Systems Inc.
- * Copyright (c) 2016-2018 Allan Jude <allanjude@freebsd.org>.
+ * Copyright (c) 2016-2018 Allan Jude <allanjude@freebsd.org>
+ * Copyright (c) 2018 Sebastian Gottschall <s.gottschall@dd-wrt.com>
  */
 
 #include <sys/param.h>
@@ -54,14 +64,15 @@ static size_t real_zstd_compress(const char *source, char *dest, int isize,
 static size_t real_zstd_decompress(const char *source, char *dest, int isize,
     int maxosize);
 
-void *zstd_alloc(void *opaque, size_t size);
-void zstd_free(void *opaque, void *ptr);
+static void *zstd_alloc(void *opaque, size_t size);
+static void zstd_free(void *opaque, void *ptr);
 
 static const ZSTD_customMem zstd_malloc = {
 	zstd_alloc,
 	zstd_free,
 	NULL,
 };
+/* these enums are index references to zstd_cache_config */
 
 enum zstd_kmem_type {
 	ZSTD_KMEM_UNKNOWN = 0,
@@ -75,10 +86,9 @@ enum zstd_kmem_type {
 	ZSTD_KMEM_WRKSPC_128K_MIN,
 	ZSTD_KMEM_WRKSPC_128K_DEF,
 	ZSTD_KMEM_WRKSPC_128K_MAX,
-	/* SPA_MAXBLOCKSIZE */
-	ZSTD_KMEM_WRKSPC_MBS_MIN,
-	ZSTD_KMEM_WRKSPC_MBS_DEF,
-	ZSTD_KMEM_WRKSPC_MBS_MAX,
+	ZSTD_KMEM_WRKSPC_16M_MIN,
+	ZSTD_KMEM_WRKSPC_16M_DEF,
+	ZSTD_KMEM_WRKSPC_16M_MAX,
 	ZSTD_KMEM_DCTX,
 	ZSTD_KMEM_COUNT,
 };
@@ -111,9 +121,9 @@ static struct zstd_kmem_config zstd_cache_config[ZSTD_KMEM_COUNT] = {
 	{ SPA_OLD_MAXBLOCKSIZE, ZIO_ZSTD_LEVEL_DEFAULT,
 	    "zstd_wrkspc_128k_def" },
 	{ SPA_OLD_MAXBLOCKSIZE, ZIO_ZSTD_LEVEL_MAX, "zstd_wrkspc_128k_max" },
-	{ SPA_MAXBLOCKSIZE, ZIO_ZSTD_LEVEL_MIN, "zstd_wrkspc_mbs_min" },
-	{ SPA_MAXBLOCKSIZE, ZIO_ZSTD_LEVEL_DEFAULT, "zstd_wrkspc_mbs_def" },
-	{ SPA_MAXBLOCKSIZE, ZIO_ZSTD_LEVEL_MAX, "zstd_wrkspc_mbs_max" },
+	{ SPA_MAXBLOCKSIZE, ZIO_ZSTD_LEVEL_MIN, "zstd_wrkspc_16m_min" },
+	{ SPA_MAXBLOCKSIZE, ZIO_ZSTD_LEVEL_DEFAULT, "zstd_wrkspc_16m_def" },
+	{ SPA_MAXBLOCKSIZE, ZIO_ZSTD_LEVEL_MAX, "zstd_wrkspc_16m_max" },
 	{ 0, 0, "zstd_dctx" },
 };
 
@@ -495,14 +505,11 @@ zstd_fini(void)
 #if defined(_KERNEL)
 module_init(zstd_init);
 module_exit(zstd_fini);
-EXPORT_SYMBOL(zstd_fini);
-EXPORT_SYMBOL(zstd_init);
 EXPORT_SYMBOL(zstd_compress);
 EXPORT_SYMBOL(zstd_decompress);
 EXPORT_SYMBOL(zstd_getlevel);
 
 MODULE_DESCRIPTION("ZSTD Compression for ZFS");
-MODULE_AUTHOR(ZFS_META_AUTHOR);
-MODULE_LICENSE(ZFS_META_LICENSE);
-MODULE_VERSION(ZFS_META_VERSION "-" ZFS_META_RELEASE);
+MODULE_LICENSE("Dual BSD/GPL");
+MODULE_VERSION("1.3.7");
 #endif

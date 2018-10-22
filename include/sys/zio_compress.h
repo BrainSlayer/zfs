@@ -151,6 +151,12 @@ extern void lz4_init(void);
 extern void lz4_fini(void);
 
 /*
+ * specific to zstd user space implementation only
+ */
+extern int zstd_init(void);
+extern void zstd_fini(void);
+
+/*
  * Compression routines.
  */
 extern size_t lzjb_compress(void *src, void *dst, size_t s_len, size_t d_len,
@@ -171,8 +177,6 @@ extern int lz4_decompress_zfs(void *src, void *dst, size_t s_len, size_t d_len,
     int level);
 extern int lz4_decompress_abd(abd_t *src, void *dst, size_t s_len, size_t d_len,
     int level);
-extern int zstd_init(void);
-extern void zstd_fini(void);
 extern size_t zstd_compress(void *src, void *dst, size_t s_len, size_t d_len,
     int level);
 extern int zstd_decompress(void *src, void *dst, size_t s_len, size_t d_len,
