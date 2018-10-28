@@ -225,6 +225,7 @@ dump_debug_buffer(void)
 {
 	if (dump_opt['G']) {
 		(void) printf("\n");
+		(void) fflush(stdout);
 		zfs_dbgmsg_print("zdb");
 	}
 }
@@ -2453,10 +2454,11 @@ dump_dir(objset_t *os)
 	dmu_objset_name(os, osname);
 
 	(void) printf("Dataset %s [%s], ID %llu, cr_txg %llu, "
-	    "%s, %llu objects%s\n",
+	    "%s, %llu objects%s%s\n",
 	    osname, type, (u_longlong_t)dmu_objset_id(os),
 	    (u_longlong_t)dds.dds_creation_txg,
-	    numbuf, (u_longlong_t)usedobjs, blkbuf);
+	    numbuf, (u_longlong_t)usedobjs, blkbuf,
+	    (dds.dds_inconsistent) ? " (inconsistent)" : "");
 
 	if (zopt_objects != 0) {
 		for (i = 0; i < zopt_objects; i++)

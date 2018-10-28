@@ -178,6 +178,7 @@ typedef struct ztest_shared_opts {
 	uint64_t zo_metaslab_force_ganging;
 	int zo_mmp_test;
 	int zo_special_vdevs;
+	int zo_dump_dbgmsg;
 } ztest_shared_opts_t;
 
 static const ztest_shared_opts_t ztest_opts_defaults = {
@@ -358,7 +359,6 @@ ztest_func_t ztest_fault_inject;
 ztest_func_t ztest_ddt_repair;
 ztest_func_t ztest_dmu_snapshot_hold;
 ztest_func_t ztest_mmp_enable_disable;
-ztest_func_t ztest_spa_rename;
 ztest_func_t ztest_scrub;
 ztest_func_t ztest_dsl_dataset_promote_busy;
 ztest_func_t ztest_vdev_attach_detach;
@@ -414,7 +414,6 @@ ztest_info_t ztest_info[] = {
 	ZTI_INIT(ztest_dmu_snapshot_hold, 1, &zopt_sometimes),
 	ZTI_INIT(ztest_mmp_enable_disable, 1, &zopt_sometimes),
 	ZTI_INIT(ztest_reguid, 1, &zopt_rarely),
-	ZTI_INIT(ztest_spa_rename, 1, &zopt_rarely),
 	ZTI_INIT(ztest_scrub, 1, &zopt_rarely),
 	ZTI_INIT(ztest_spa_upgrade, 1, &zopt_rarely),
 	ZTI_INIT(ztest_dsl_dataset_promote_busy, 1, &zopt_rarely),
@@ -486,7 +485,6 @@ static kmutex_t ztest_checkpoint_lock;
 static pthread_rwlock_t ztest_name_lock;
 
 static boolean_t ztest_dump_core = B_TRUE;
-static boolean_t ztest_dump_debug_buffer = B_FALSE;
 static boolean_t ztest_exiting;
 
 /* Global commit callback list */
@@ -535,10 +533,16 @@ _umem_logging_init(void)
 static void
 dump_debug_buffer(void)
 {
-	if (!ztest_dump_debug_buffer)
+	ssize_t ret __attribute__((unused));
+
+	if (!ztest_opts.zo_dump_dbgmsg)
 		return;
 
-	(void) printf("\n");
+	/*
+	 * We use write() instead of printf() so that this function
+	 * is safe to call from a signal handler.
+	 */
+	ret = write(STDOUT_FILENO, "\n", 1);
 	zfs_dbgmsg_print("ztest");
 }
 
@@ -593,10 +597,11 @@ fatal(int do_perror, char *message, ...)
 	(void) fprintf(stderr, "%s\n", buf);
 	fatal_msg = buf;			/* to ease debugging */
 
-	dump_debug_buffer();
-
 	if (ztest_dump_core)
 		abort();
+	else
+		dump_debug_buffer();
+
 	exit(3);
 }
 
@@ -868,7 +873,7 @@ process_options(int argc, char **argv)
 				usage(B_FALSE);
 			break;
 		case 'G':
-			ztest_dump_debug_buffer = B_TRUE;
+			zo->zo_dump_dbgmsg = 1;
 			break;
 		case 'h':
 			usage(B_TRUE);
@@ -3545,6 +3550,15 @@ ztest_device_removal(ztest_ds_t *zd, uint64_t id)
 		ztest_device_removal_active = B_TRUE;
 		mutex_exit(&ztest_vdev_lock);
 
+		/*
+		 * spa->spa_vdev_removal is created in a sync task that
+		 * is initiated via dsl_sync_task_nowait(). Since the
+		 * task may not run before spa_vdev_remove() returns, we
+		 * must wait at least 1 txg to ensure that the removal
+		 * struct has been created.
+		 */
+		txg_wait_synced(spa_get_dsl(spa), 0);
+
 		while (spa->spa_vdev_removal != NULL)
 			txg_wait_synced(spa_get_dsl(spa), 0);
 	} else {
@@ -6123,62 +6137,6 @@ ztest_reguid(ztest_ds_t *zd, uint64_t id)
 	VERIFY3U(load, ==, spa_load_guid(spa));
 }
 
-/*
- * Rename the pool to a different name and then rename it back.
- */
-/* ARGSUSED */
-void
-ztest_spa_rename(ztest_ds_t *zd, uint64_t id)
-{
-	char *oldname, *newname;
-	spa_t *spa;
-
-	if (ztest_opts.zo_mmp_test)
-		return;
-
-	(void) pthread_rwlock_wrlock(&ztest_name_lock);
-
-	oldname = ztest_opts.zo_pool;
-	newname = umem_alloc(strlen(oldname) + 5, UMEM_NOFAIL);
-	(void) strcpy(newname, oldname);
-	(void) strcat(newname, "_tmp");
-
-	/*
-	 * Do the rename
-	 */
-	VERIFY3U(0, ==, spa_rename(oldname, newname));
-
-	/*
-	 * Try to open it under the old name, which shouldn't exist
-	 */
-	VERIFY3U(ENOENT, ==, spa_open(oldname, &spa, FTAG));
-
-	/*
-	 * Open it under the new name and make sure it's still the same spa_t.
-	 */
-	VERIFY3U(0, ==, spa_open(newname, &spa, FTAG));
-
-	ASSERT(spa == ztest_spa);
-	spa_close(spa, FTAG);
-
-	/*
-	 * Rename it back to the original
-	 */
-	VERIFY3U(0, ==, spa_rename(newname, oldname));
-
-	/*
-	 * Make sure it can still be opened
-	 */
-	VERIFY3U(0, ==, spa_open(oldname, &spa, FTAG));
-
-	ASSERT(spa == ztest_spa);
-	spa_close(spa, FTAG);
-
-	umem_free(newname, strlen(newname) + 1);
-
-	(void) pthread_rwlock_unlock(&ztest_name_lock);
-}
-
 void
 ztest_fletcher(ztest_ds_t *zd, uint64_t id)
 {
@@ -6554,13 +6512,20 @@ ztest_deadman_thread(void *arg)
 {
 	ztest_shared_t *zs = arg;
 	spa_t *spa = ztest_spa;
-	hrtime_t delta, overdue, total = 0;
+	hrtime_t delay, overdue, last_run = gethrtime();
 
-	for (;;) {
-		delta = zs->zs_thread_stop - zs->zs_thread_start +
-		    MSEC2NSEC(zfs_deadman_synctime_ms);
+	delay = (zs->zs_thread_stop - zs->zs_thread_start) +
+	    MSEC2NSEC(zfs_deadman_synctime_ms);
 
-		(void) poll(NULL, 0, (int)NSEC2MSEC(delta));
+	while (!ztest_exiting) {
+		/*
+		 * Wait for the delay timer while checking occasionally
+		 * if we should stop.
+		 */
+		if (gethrtime() < last_run + delay) {
+			(void) poll(NULL, 0, 1000);
+			continue;
+		}
 
 		/*
 		 * If the pool is suspended then fail immediately. Otherwise,
@@ -6581,15 +6546,20 @@ ztest_deadman_thread(void *arg)
 		 * then it may be hung and is terminated.
 		 */
 		overdue = zs->zs_proc_stop + MSEC2NSEC(zfs_deadman_synctime_ms);
-		total += zfs_deadman_synctime_ms / 1000;
 		if (gethrtime() > overdue) {
 			fatal(0, "aborting test after %llu seconds because "
-			    "the process is overdue for termination.", total);
+			    "the process is overdue for termination.",
+			    (gethrtime() - zs->zs_proc_start) / NANOSEC);
 		}
 
 		(void) printf("ztest has been running for %lld seconds\n",
-		    total);
+		    (gethrtime() - zs->zs_proc_start) / NANOSEC);
+
+		last_run = gethrtime();
+		delay = MSEC2NSEC(zfs_deadman_checktime_ms);
 	}
+
+	thread_exit();
 }
 
 static void
@@ -6783,7 +6753,7 @@ ztest_run(ztest_shared_t *zs)
 {
 	spa_t *spa;
 	objset_t *os;
-	kthread_t *resume_thread;
+	kthread_t *resume_thread, *deadman_thread;
 	kthread_t **run_threads;
 	uint64_t object;
 	int error;
@@ -6841,7 +6811,7 @@ ztest_run(ztest_shared_t *zs)
 	/*
 	 * Create a deadman thread and set to panic if we hang.
 	 */
-	(void) thread_create(NULL, 0, ztest_deadman_thread,
+	deadman_thread = thread_create(NULL, 0, ztest_deadman_thread,
 	    zs, 0, NULL, TS_RUN | TS_JOINABLE, defclsyspri);
 
 	spa->spa_deadman_failmode = ZIO_FAILURE_MODE_PANIC;
@@ -6908,9 +6878,10 @@ ztest_run(ztest_shared_t *zs)
 
 	umem_free(run_threads, ztest_opts.zo_threads * sizeof (kthread_t *));
 
-	/* Kill the resume thread */
+	/* Kill the resume and deadman threads */
 	ztest_exiting = B_TRUE;
 	VERIFY0(thread_join(resume_thread));
+	VERIFY0(thread_join(deadman_thread));
 	ztest_resume(spa);
 
 	/*
@@ -7400,7 +7371,6 @@ main(int argc, char **argv)
 	ztest_shared_callstate_t *zc;
 	char timebuf[100];
 	char numbuf[NN_NUMBUF_SZ];
-	spa_t *spa;
 	char *cmd;
 	boolean_t hasalt;
 	int f;
@@ -7411,6 +7381,7 @@ main(int argc, char **argv)
 
 	dprintf_setup(&argc, argv);
 	zfs_deadman_synctime_ms = 300000;
+	zfs_deadman_checktime_ms = 30000;
 	/*
 	 * As two-word space map entries may not come up often (especially
 	 * if pool and vdev sizes are small) we want to force at least some
@@ -7422,8 +7393,13 @@ main(int argc, char **argv)
 	 * Verify that even extensively damaged split blocks with many
 	 * segments can be reconstructed in a reasonable amount of time
 	 * when reconstruction is known to be possible.
+	 *
+	 * Note: the lower this value is, the more damage we inflict, and
+	 * the more time ztest spends in recovering that damage. We chose
+	 * to induce damage 1/100th of the time so recovery is tested but
+	 * not so frequently that ztest doesn't get to test other code paths.
 	 */
-	zfs_reconstruct_indirect_damage_fraction = 4;
+	zfs_reconstruct_indirect_damage_fraction = 100;
 
 	action.sa_handler = sig_handler;
 	sigemptyset(&action.sa_mask);
@@ -7601,24 +7577,6 @@ main(int argc, char **argv)
 			}
 			(void) printf("\n");
 		}
-
-		/*
-		 * It's possible that we killed a child during a rename test,
-		 * in which case we'll have a 'ztest_tmp' pool lying around
-		 * instead of 'ztest'.  Do a blind rename in case this happened.
-		 */
-		kernel_init(FREAD);
-		if (spa_open(ztest_opts.zo_pool, &spa, FTAG) == 0) {
-			spa_close(spa, FTAG);
-		} else {
-			char tmpname[ZFS_MAX_DATASET_NAME_LEN];
-			kernel_fini();
-			kernel_init(FREAD | FWRITE);
-			(void) snprintf(tmpname, sizeof (tmpname), "%s_tmp",
-			    ztest_opts.zo_pool);
-			(void) spa_rename(tmpname, ztest_opts.zo_pool);
-		}
-		kernel_fini();
 
 		if (!ztest_opts.zo_mmp_test)
 			ztest_run_zdb(ztest_opts.zo_pool);
