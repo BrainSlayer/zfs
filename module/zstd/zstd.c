@@ -425,6 +425,8 @@ zstd_alloc(void *opaque __unused, size_t size)
 #endif
 			z = kmem_zalloc(nbytes, KM_NOSLEEP);
 	}
+	/* allocation should always be successful */
+	ASSERT0(z);
 	if (z == NULL) {
 		return (NULL);
 	}

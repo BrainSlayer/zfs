@@ -1575,7 +1575,7 @@ zio_write_compress(zio_t *zio)
 	    !(zio->io_flags & ZIO_FLAG_RAW_COMPRESS)) {
 		void *cbuf = zio_buf_alloc(lsize);
 		psize = zio_compress_data(compress, zio->io_abd, cbuf, lsize,
-		    zp);
+		    zp->zp_zstd_level);
 		if (psize == 0 || psize >= lsize) {
 			compress = ZIO_COMPRESS_OFF;
 			zio_buf_free(cbuf, lsize);
@@ -1638,7 +1638,7 @@ zio_write_compress(zio_t *zio)
 		 * to a hole.
 		 */
 		psize = zio_compress_data(ZIO_COMPRESS_EMPTY,
-		    zio->io_abd, NULL, lsize, &zio->io_prop);
+		    zio->io_abd, NULL, lsize, zio->io_prop.zp_zstd_level);
 		if (psize == 0 || psize >= lsize)
 			compress = ZIO_COMPRESS_OFF;
 	} else {

@@ -121,7 +121,7 @@ zio_compress_zeroed_cb(void *data, size_t len, void *private)
 
 size_t
 zio_compress_data(enum zio_compress c, abd_t *src, void *dst, size_t s_len,
-    zio_prop_t *zp)
+    enum zio_zstd_levels zstd_level)
 {
 	size_t c_len, d_len;
 	int level;
@@ -147,10 +147,10 @@ zio_compress_data(enum zio_compress c, abd_t *src, void *dst, size_t s_len,
 
 	if (c == ZIO_COMPRESS_ZSTD) {
 		ASSERT(zp != NULL);
-		if (zp->zp_zstd_level == ZIO_ZSTDLVL_DEFAULT)
+		if (zstd_level == ZIO_ZSTDLVL_DEFAULT)
 			level = ZIO_ZSTD_LEVEL_DEFAULT;
 		else
-			level = zp->zp_zstd_level;
+			level = zstd_level;
 	}
 
 	/* No compression algorithms can read from ABDs directly */
