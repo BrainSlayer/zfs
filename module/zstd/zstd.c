@@ -399,11 +399,6 @@ zstd_alloc(void *opaque __unused, size_t size)
 	for (i = 0; i < ZSTD_KMEM_COUNT; i++) {
 		if (nbytes <= zstd_cache_size[i].kmem_size) {
 			type = zstd_cache_size[i].kmem_type;
-#ifdef _KERNEL
-			if (nbytes > spl_kmem_alloc_max ||
-			    nbytes > spl_kmem_alloc_warn)
-				break;
-#endif
 			z = kmem_cache_alloc(zstd_kmem_cache[type], \
 			    KM_NOSLEEP);
 			if (z)
