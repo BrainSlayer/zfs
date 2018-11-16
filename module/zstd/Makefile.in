@@ -25,7 +25,9 @@ $(MODULE)-objs += compress/zstd_fast.o
 $(MODULE)-objs += compress/zstd_lazy.o
 $(MODULE)-objs += compress/zstd_ldm.o
 $(MODULE)-objs += compress/zstd_opt.o
+$(MODULE)-objs += decompress/zstd_ddict.o
 $(MODULE)-objs += decompress/zstd_decompress.o
+$(MODULE)-objs += decompress/zstd_decompress_block.o
 $(MODULE)-objs += decompress/huf_decompress.o
 $(MODULE)-objs += zstd.o
 

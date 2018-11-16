@@ -180,7 +180,9 @@ ZSTD_C = \
 	zstd_lazy.c \
 	zstd_ldm.c \
 	zstd_opt.c \
+	zstd_ddict.c \
 	zstd_decompress.c \
+	zstd_decompress_block.c \
 	huf_decompress.c \
 	zstd.c
 
