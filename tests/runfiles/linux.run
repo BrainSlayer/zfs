@@ -181,7 +181,7 @@ tests = ['zfs_mount_001_pos', 'zfs_mount_002_pos', 'zfs_mount_003_pos',
     'zfs_mount_007_pos', 'zfs_mount_008_pos', 'zfs_mount_009_neg',
     'zfs_mount_010_neg', 'zfs_mount_011_neg', 'zfs_mount_012_neg',
     'zfs_mount_all_001_pos', 'zfs_mount_encrypted', 'zfs_mount_remount',
-    'zfs_multi_mount']
+    'zfs_multi_mount', 'zfs_mount_all_fail', 'zfs_mount_all_mountpoints']
 tags = ['functional', 'cli_root', 'zfs_mount']
 
 [tests/functional/cli_root/zfs_program]
@@ -543,10 +543,10 @@ tests = ['exec_001_pos', 'exec_002_neg']
 tags = ['functional', 'exec']
 
 [tests/functional/fault]
-tests = ['auto_online_001_pos', 'auto_replace_001_pos', 'auto_spare_001_pos',
-    'auto_spare_002_pos', 'auto_spare_ashift', 'auto_spare_multiple',
-    'auto_spare_shared', 'scrub_after_resilver', 'decrypt_fault',
-    'decompress_fault','zpool_status_-s']
+tests = ['auto_offline_001_pos', 'auto_online_001_pos', 'auto_replace_001_pos',
+    'auto_spare_001_pos', 'auto_spare_002_pos', 'auto_spare_ashift',
+    'auto_spare_multiple', 'auto_spare_shared', 'scrub_after_resilver',
+    'decrypt_fault', 'decompress_fault', 'zpool_status_-s']
 tags = ['functional', 'fault']
 
 [tests/functional/features/async_destroy]

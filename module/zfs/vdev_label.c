@@ -228,8 +228,6 @@ vdev_config_generate_stats(vdev_t *vd, nvlist_t *nv)
 	fnvlist_add_uint64_array(nv, ZPOOL_CONFIG_VDEV_STATS,
 	    (uint64_t *)vs, sizeof (*vs) / sizeof (uint64_t));
 
-	kmem_free(vs, sizeof (*vs));
-
 	/*
 	 * Add extended stats into a special extended stats nvlist.  This keeps
 	 * all the extended stats nicely grouped together.  The extended stats
@@ -354,6 +352,7 @@ vdev_config_generate_stats(vdev_t *vd, nvlist_t *nv)
 	fnvlist_add_nvlist(nv, ZPOOL_CONFIG_VDEV_STATS_EX, nvx);
 
 	fnvlist_free(nvx);
+	kmem_free(vs, sizeof (*vs));
 	kmem_free(vsx, sizeof (*vsx));
 }
 
@@ -514,6 +513,10 @@ vdev_config_generate(spa_t *spa, vdev_t *vd, boolean_t getstats,
 
 	if (vd->vdev_crtxg)
 		fnvlist_add_uint64(nv, ZPOOL_CONFIG_CREATE_TXG, vd->vdev_crtxg);
+
+	if (vd->vdev_expansion_time)
+		fnvlist_add_uint64(nv, ZPOOL_CONFIG_EXPANSION_TIME,
+		    vd->vdev_expansion_time);
 
 	if (flags & VDEV_CONFIG_MOS) {
 		if (vd->vdev_leaf_zap != 0) {
