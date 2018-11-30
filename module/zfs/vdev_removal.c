@@ -121,7 +121,7 @@ int vdev_removal_max_span = 32 * 1024;
  * This is used by the test suite so that it can ensure that certain
  * actions happen while in the middle of a removal.
  */
-unsigned long zfs_remove_max_bytes_pause = -1UL;
+int zfs_removal_suspend_progress = 0;
 
 #define	VDEV_REMOVAL_ZAP_OBJS	"lzap"
 
@@ -672,7 +672,7 @@ spa_finish_removal(spa_t *spa, dsl_scan_state_t state, dmu_tx_t *tx)
 		vdev_t *vd = vdev_lookup_top(spa, svr->svr_vdev_id);
 		vdev_indirect_config_t *vic = &vd->vdev_indirect_config;
 
-		if (srp->sr_prev_indirect_vdev != UINT64_MAX) {
+		if (srp->sr_prev_indirect_vdev != -1) {
 			vdev_t *pvd;
 			pvd = vdev_lookup_top(spa,
 			    srp->sr_prev_indirect_vdev);
@@ -1449,14 +1449,14 @@ spa_vdev_remove_thread(void *arg)
 
 			/*
 			 * This delay will pause the removal around the point
-			 * specified by zfs_remove_max_bytes_pause. We do this
+			 * specified by zfs_removal_suspend_progress. We do this
 			 * solely from the test suite or during debugging.
 			 */
 			uint64_t bytes_copied =
 			    spa->spa_removing_phys.sr_copied;
 			for (int i = 0; i < TXG_SIZE; i++)
 				bytes_copied += svr->svr_bytes_done[i];
-			while (zfs_remove_max_bytes_pause <= bytes_copied &&
+			while (zfs_removal_suspend_progress &&
 			    !svr->svr_thread_exit)
 				delay(hz);
 
@@ -2145,13 +2145,6 @@ spa_removal_get_stats(spa_t *spa, pool_removal_stat_t *prs)
 	prs->prs_to_copy = spa->spa_removing_phys.sr_to_copy;
 	prs->prs_copied = spa->spa_removing_phys.sr_copied;
 
-	if (spa->spa_vdev_removal != NULL) {
-		for (int i = 0; i < TXG_SIZE; i++) {
-			prs->prs_copied +=
-			    spa->spa_vdev_removal->svr_bytes_done[i];
-		}
-	}
-
 	prs->prs_mapping_memory = 0;
 	uint64_t indirect_vdev_id =
 	    spa->spa_removing_phys.sr_prev_indirect_vdev;
@@ -2178,8 +2171,8 @@ MODULE_PARM_DESC(vdev_removal_max_span,
 	"Largest span of free chunks a remap segment can span");
 
 /* BEGIN CSTYLED */
-module_param(zfs_remove_max_bytes_pause, ulong, 0644);
-MODULE_PARM_DESC(zfs_remove_max_bytes_pause,
+module_param(zfs_removal_suspend_progress, int, 0644);
+MODULE_PARM_DESC(zfs_removal_suspend_progress,
 	"Pause device removal after this many bytes are copied "
 	"(debug use only - causes removal to hang)");
 /* END CSTYLED */
