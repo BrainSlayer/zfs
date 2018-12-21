@@ -1,7 +1,4 @@
 /*
- * Common functions of New Generation Entropy library
- * Copyright (C) 2016, Yann Collet.
- *
  * BSD 2-Clause License (http://www.opensource.org/licenses/bsd-license.php)
  *
  * Redistribution and use in source and binary forms, with or without
