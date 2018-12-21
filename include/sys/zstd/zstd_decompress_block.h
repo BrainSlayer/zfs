@@ -1,3 +1,4 @@
+/* BEGIN CSTYLED */
 /*
  * Copyright (c) 2016-present, Yann Collet, Facebook, Inc.
  * All rights reserved.
@@ -57,3 +58,4 @@ void ZSTD_buildFSETable(ZSTD_seqSymbol* dt,
 
 
 #endif /* ZSTD_DEC_BLOCK_H */
+/* END CSTYLED */

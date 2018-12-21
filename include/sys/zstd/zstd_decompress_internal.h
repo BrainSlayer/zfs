@@ -1,3 +1,4 @@
+/* BEGIN CSTYLED */
 /*
  * Copyright (c) 2016-present, Yann Collet, Facebook, Inc.
  * All rights reserved.
@@ -166,3 +167,4 @@ void ZSTD_checkContinuity(ZSTD_DCtx* dctx, const void* dst);
 
 
 #endif /* ZSTD_DECOMPRESS_INTERNAL_H */
+/* END CSTYLED */

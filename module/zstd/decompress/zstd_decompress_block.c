@@ -1,3 +1,4 @@
+/* BEGIN CSTYLED */
 /*
  * Copyright (c) 2016-present, Yann Collet, Facebook, Inc.
  * All rights reserved.
@@ -1223,4 +1224,5 @@ ZSTD_decompressBlock_internal(ZSTD_DCtx* dctx,
         /* else */
         return ZSTD_decompressSequences(dctx, dst, dstCapacity, ip, srcSize, nbSeq, isLongOffset);
     }
+/* END CSTYLED */
 }
