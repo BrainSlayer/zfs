@@ -63,6 +63,7 @@ static size_t real_zstd_decompress(const char *source, char *dest, int isize,
 
 static void *zstd_alloc(void *opaque, size_t size);
 static void zstd_free(void *opaque, void *ptr);
+static kmutex_t zstd_mutex;
 
 static const ZSTD_customMem zstd_malloc = {
 	zstd_alloc,
@@ -94,6 +95,14 @@ struct zstd_kmem {
 	uint_t			kmem_magic;
 	enum zstd_kmem_type	kmem_type;
 	size_t			kmem_size;
+	boolean_t		isvm;
+};
+
+struct zstd_vmem {
+	size_t			vmem_size;
+	void			*vm;
+	kmutex_t 		barrier;
+	boolean_t		inuse;
 };
 
 struct zstd_kmem_config {
@@ -104,7 +113,15 @@ struct zstd_kmem_config {
 
 static kmem_cache_t *zstd_kmem_cache[ZSTD_KMEM_COUNT] = { NULL };
 static struct zstd_kmem zstd_cache_size[ZSTD_KMEM_COUNT] = {
-	{ ZSTD_KMEM_MAGIC, 0, 0 } };
+	{ ZSTD_KMEM_MAGIC, 0, 0, B_FALSE} };
+
+static struct zstd_vmem zstd_vmem_cache[ZSTD_KMEM_COUNT] = {
+	{ 
+	.vmem_size = 0,
+	.vm = NULL, 
+	.inuse = B_FALSE
+	} 
+	};
 static struct zstd_kmem_config zstd_cache_config[ZSTD_KMEM_COUNT] = {
 	{ 0, 0, "zstd_unknown" },
 	{ 0, 0, "zstd_cctx" },
@@ -278,8 +295,13 @@ zstd_compress(void *s_start, void *d_start, size_t s_len, size_t d_len, int n)
 	    d_len - sizeof (bufsiz) - sizeof (zstdlevel), zstdlevel);
 
 	/* Signal an error if the compression routine returned an error. */
-	if (ZSTD_isError(c_len))
+	if (ZSTD_isError(c_len)) {
+#ifdef _KERNEL
+		if (c_len != (size_t)-70)
+			printk(KERN_INFO "zstd: compress error code %ld\n", c_len);
+#endif
 		return (s_len);
+	}
 
 	/*
 	 * Encode the compresed buffer size at the start. We'll need this in
@@ -314,17 +336,26 @@ zstd_decompress(void *s_start, void *d_start, size_t s_len, size_t d_len, int n)
 	ASSERT(zstdlevel < ZIO_ZSTDLVL_LEVELS);
 
 	/* invalid compressed buffer size encoded at start */
-	if (bufsiz + sizeof (bufsiz) > s_len)
+	if (bufsiz + sizeof (bufsiz) > s_len) {
+#ifdef _KERNEL
+		printk(KERN_INFO "zstd: invalid compressed buffer size\n");
+#endif
 		return (1);
+	}
 
 	/*
 	 * Returns 0 on success (decompression function returned non-negative)
 	 * and non-zero on failure (decompression function returned negative.
 	 */
-	if (ZSTD_isError(real_zstd_decompress(
+	size_t len = real_zstd_decompress(
 	    &src[sizeof (bufsiz) + sizeof (zstdlevel)], \
-	    d_start, bufsiz, d_len)))
+	    d_start, bufsiz, d_len);
+	if (ZSTD_isError(len)) {
+#ifdef _KERNEL
+		printk(KERN_INFO "zstd: decompression failed %ld\n", len);
+#endif
 		return (1);
+	}
 
 	return (0);
 }
@@ -383,75 +414,163 @@ real_zstd_decompress(const char *source, char *dest, int isize, int maxosize)
 	ZSTD_freeDCtx(dctx);
 	return (result);
 }
+static int zstd_meminit(void);
+
+
 
 extern void *
-zstd_alloc(void *opaque __unused, size_t size)
+real_zstd_alloc(size_t size)
 {
 	size_t nbytes = sizeof (struct zstd_kmem) + size;
 	struct zstd_kmem *z = NULL;
 	enum zstd_kmem_type type;
+	enum zstd_kmem_type newtype;
 	int i;
-
+	int vm = 0;
 	type = ZSTD_KMEM_UNKNOWN;
 	for (i = 0; i < ZSTD_KMEM_COUNT; i++) {
 		if (nbytes <= zstd_cache_size[i].kmem_size) {
 			type = zstd_cache_size[i].kmem_type;
-			z = kmem_cache_alloc(zstd_kmem_cache[type], \
-			    KM_NOSLEEP);
-			if (z)
-				memset(z, 0, nbytes);
+			if (zstd_kmem_cache[type]) {
+				z = kmem_cache_alloc( \
+				    zstd_kmem_cache[type], \
+				    KM_NOSLEEP);
+				if (z) {
+					memset(z, 0, nbytes);
+					z->isvm = B_FALSE;
+				}
+			}
 			break;
 		}
 	}
+	newtype = type;
 	/* No matching cache */
 	if (type == ZSTD_KMEM_UNKNOWN || z == NULL) {
-		type = ZSTD_KMEM_UNKNOWN;
+		newtype = ZSTD_KMEM_UNKNOWN;
 		/*
 		 * consider max allocation size
 		 * so we need to use standard vmem allocator
 		 */
 #ifdef _KERNEL
-		if (nbytes > spl_kmem_alloc_max || nbytes > spl_kmem_alloc_warn)
+		if (nbytes > spl_kmem_alloc_max || \
+		    nbytes > spl_kmem_alloc_warn) {
+			vm = 1;
 			z = vmem_zalloc(nbytes, KM_NOSLEEP);
+			if (!z) {
+				vm = 2;
+				z = vmalloc(nbytes);
+			}
+		}
 		else
 #endif
 			z = kmem_zalloc(nbytes, KM_NOSLEEP);
 	}
+	/* fallback if everything fails */
+	if (!z && zstd_vmem_cache[type].vm && type != ZSTD_KMEM_UNKNOWN) {
+#ifdef _KERNEL
+		printk(KERN_INFO "hit barrier for %ld bytes\n", nbytes);
+#endif
+		mutex_enter(&zstd_vmem_cache[type].barrier);
+		mutex_exit(&zstd_vmem_cache[type].barrier);
+
+
+		mutex_enter(&zstd_vmem_cache[type].barrier);
+		zstd_vmem_cache[type].inuse = B_TRUE;
+		z = zstd_vmem_cache[type].vm;
+		if (z) {
+			memset(z, 0, nbytes);
+			z->isvm = B_TRUE;
+		}
+	}
+			
+
 	/* allocation should always be successful */
 	ASSERT0(z);
+#ifdef _KERNEL
+	if (vm == 2)
+		printk(KERN_INFO "zstd: standard vmem_zalloc %ld failed. but vmalloc worked\n", size);
+#endif
 	if (z == NULL) {
+#ifdef _KERNEL
+		printk(KERN_INFO "zstd: memory allocation of %ld bytes failed %s\n", size, vm ? "(vmalloc)" : "(kmalloc)");
+#endif
 		return (NULL);
 	}
 
 	z->kmem_magic = ZSTD_KMEM_MAGIC;
-	z->kmem_type = type;
+	z->kmem_type = newtype;
 	z->kmem_size = nbytes;
 
 	return ((void*)z + (sizeof (struct zstd_kmem)));
+}
+extern void *
+zstd_alloc(void *opaque __unused, size_t size)
+{
+	static boolean_t zstd_initialized = 0;
+	void *mem;
+	mutex_enter(&zstd_mutex);
+	if (zstd_initialized == B_FALSE) {
+		zstd_meminit();
+		zstd_initialized = B_TRUE;
+	}
+
+	mem = real_zstd_alloc(size);
+	/*
+	 * if ram is still NULL, there, the requested block was bigger
+	 * than any preset object in memory pool. this should never happen
+	 */
+	 
+	mutex_exit(&zstd_mutex);
+	return (mem);
 }
 
 extern void
 zstd_free(void *opaque __unused, void *ptr)
 {
 	struct zstd_kmem *z = ptr - sizeof (struct zstd_kmem);
+	enum zstd_kmem_type type;
+	mutex_enter(&zstd_mutex);
 
 	ASSERT3U(z->kmem_magic, ==, ZSTD_KMEM_MAGIC);
 	ASSERT3U(z->kmem_type, <, ZSTD_KMEM_COUNT);
 	ASSERT3U(z->kmem_type, >=, ZSTD_KMEM_UNKNOWN);
-
-	if (z->kmem_type == ZSTD_KMEM_UNKNOWN) {
+	type = z->kmem_type;
+	if (type == ZSTD_KMEM_UNKNOWN) {
 		kmem_free(z, z->kmem_size);
 	} else {
-		kmem_cache_free(zstd_kmem_cache[z->kmem_type], z);
+		if (zstd_kmem_cache[type] && z->isvm == B_FALSE) {
+			kmem_cache_free(zstd_kmem_cache[type], z);
+		} else if (zstd_vmem_cache[type].vm \
+		    && zstd_vmem_cache[type].inuse == B_TRUE) {
+			zstd_vmem_cache[type].inuse = B_FALSE;
+			/* release barrier */
+			mutex_exit(&zstd_vmem_cache[type].barrier);
+		}
+
 	}
+	mutex_exit(&zstd_mutex);
 }
 #ifndef _KERNEL
 #define	__init
 #define	__exit
 #endif
 
-extern int __init
-zstd_init(void)
+static void create_vmem_cache(struct zstd_vmem *mem, char *name, size_t size)
+{
+#ifdef _KERNEL
+	printk(KERN_INFO "allocate some VM space %s:%ld\n", name, size);
+	mem->vmem_size = size;
+	mem->vm = \
+	    vmem_zalloc(mem->vmem_size, \
+	    KM_NOSLEEP);
+	if (!mem->vm)
+	    printk(KERN_INFO "failed!!!\n");
+	mem->inuse = B_FALSE;
+	mutex_init(&mem->barrier, \
+	    NULL, MUTEX_DEFAULT, NULL);
+#endif
+}
+static int zstd_meminit(void)
 {
 	int i;
 
@@ -463,7 +582,8 @@ zstd_init(void)
 	zstd_kmem_cache[1] = kmem_cache_create(
 	    zstd_cache_config[1].cache_name, zstd_cache_size[1].kmem_size,
 	    0, NULL, NULL, NULL, NULL, NULL, 0);
-
+	create_vmem_cache(&zstd_vmem_cache[1], zstd_cache_config[1].cache_name, \
+	    zstd_cache_size[1].kmem_size);
 	/*
 	 * Estimate the size of the ZSTD CCtx workspace required for each record
 	 * size at each compression level.
@@ -477,11 +597,18 @@ zstd_init(void)
 		    ZSTD_getCParams(zstd_cache_config[i].compress_level,
 		    zstd_cache_config[i].block_size, 0)) +
 		    sizeof (struct zstd_kmem), PAGESIZE);
+		/*
+		 * Preserve memory for bigger blocks using vmem
+		 */
+		create_vmem_cache(&zstd_vmem_cache[i], \
+		    zstd_cache_config[i].cache_name, \
+		    zstd_cache_size[i].kmem_size);
 		zstd_kmem_cache[i] = kmem_cache_create(
 		    zstd_cache_config[i].cache_name,
 		    zstd_cache_size[i].kmem_size,
 		    0, NULL, NULL, NULL, NULL, NULL, 0);
 	}
+
 	/* Estimate the size of the decompression context */
 	zstd_cache_size[i].kmem_magic = ZSTD_KMEM_MAGIC;
 	zstd_cache_size[i].kmem_type = i;
@@ -490,9 +617,21 @@ zstd_init(void)
 	zstd_kmem_cache[i] = kmem_cache_create(zstd_cache_config[i].cache_name,
 	    zstd_cache_size[i].kmem_size, 0, NULL, NULL, NULL, NULL, NULL, 0);
 
+
+	create_vmem_cache(&zstd_vmem_cache[i], zstd_cache_config[i].cache_name, \
+	    zstd_cache_size[i].kmem_size);
+
 	/* Sort the kmem caches for later searching */
 	zstd_qsort(zstd_cache_size, ZSTD_KMEM_COUNT, sizeof (struct zstd_kmem),
 	    zstd_compare);
+
+	return (0);
+}
+
+extern int __init
+zstd_init(void)
+{
+	mutex_init(&zstd_mutex, NULL, MUTEX_DEFAULT, NULL);
 	return (0);
 }
 
@@ -503,10 +642,19 @@ zstd_fini(void)
 
 	for (i = 0; i < ZSTD_KMEM_COUNT; i++) {
 		type = zstd_cache_size[i].kmem_type;
-		if (zstd_kmem_cache[type] != NULL) {
-			kmem_cache_destroy(zstd_kmem_cache[type]);
+		if (zstd_vmem_cache[type].vm) {
+			kmem_free(zstd_vmem_cache[type].vm, \
+			    zstd_vmem_cache[type].vmem_size);
+			zstd_vmem_cache[type].vm = NULL;
+			zstd_vmem_cache[type].inuse = B_FALSE;
+			mutex_destroy(&zstd_vmem_cache[type].barrier);
+		} else {
+			if (zstd_kmem_cache[type] != NULL) {
+				kmem_cache_destroy(zstd_kmem_cache[type]);
+			}
 		}
 	}
+	mutex_destroy(&zstd_mutex);
 }
 
 
