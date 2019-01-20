@@ -63,7 +63,6 @@ static size_t real_zstd_decompress(const char *source, char *dest, int isize,
 
 static void *zstd_alloc(void *opaque, size_t size);
 static void zstd_free(void *opaque, void *ptr);
-static kmutex_t zstd_mutex;
 
 static const ZSTD_customMem zstd_malloc = {
 	zstd_alloc,
@@ -419,7 +418,7 @@ static int zstd_meminit(void);
 
 
 extern void *
-real_zstd_alloc(size_t size)
+zstd_alloc(void *opaque __unused, size_t size)
 {
 	size_t nbytes = sizeof (struct zstd_kmem) + size;
 	struct zstd_kmem *z = NULL;
@@ -466,7 +465,7 @@ real_zstd_alloc(size_t size)
 			z = kmem_zalloc(nbytes, KM_SLEEP);
 	}
 	/* fallback if everything fails */
-	if (!z && zstd_vmem_cache[type].vm && type != ZSTD_KMEM_UNKNOWN) {
+	if (!z && zstd_vmem_cache[type].vm && type == ZSTD_KMEM_DCTX) {
 #ifdef _KERNEL
 		printk(KERN_INFO "hit barrier for %ld bytes\n", nbytes);
 #endif
@@ -503,33 +502,12 @@ real_zstd_alloc(size_t size)
 
 	return ((void*)z + (sizeof (struct zstd_kmem)));
 }
-extern void *
-zstd_alloc(void *opaque __unused, size_t size)
-{
-	static boolean_t zstd_initialized = 0;
-	void *mem;
-	mutex_enter(&zstd_mutex);
-	if (zstd_initialized == B_FALSE) {
-		zstd_meminit();
-		zstd_initialized = B_TRUE;
-	}
-
-	mem = real_zstd_alloc(size);
-	/*
-	 * if ram is still NULL, there, the requested block was bigger
-	 * than any preset object in memory pool. this should never happen
-	 */
-	 
-	mutex_exit(&zstd_mutex);
-	return (mem);
-}
 
 extern void
 zstd_free(void *opaque __unused, void *ptr)
 {
 	struct zstd_kmem *z = ptr - sizeof (struct zstd_kmem);
 	enum zstd_kmem_type type;
-	mutex_enter(&zstd_mutex);
 
 	ASSERT3U(z->kmem_magic, ==, ZSTD_KMEM_MAGIC);
 	ASSERT3U(z->kmem_type, <, ZSTD_KMEM_COUNT);
@@ -548,7 +526,6 @@ zstd_free(void *opaque __unused, void *ptr)
 		}
 
 	}
-	mutex_exit(&zstd_mutex);
 }
 #ifndef _KERNEL
 #define	__init
@@ -558,7 +535,7 @@ zstd_free(void *opaque __unused, void *ptr)
 static void create_vmem_cache(struct zstd_vmem *mem, char *name, size_t size)
 {
 #ifdef _KERNEL
-	printk(KERN_INFO "allocate some VM space %s:%ld\n", name, size);
+	printk(KERN_INFO "preallocate fallback space %s:%ld\n", name, size);
 	mem->vmem_size = size;
 	mem->vm = \
 	    vmem_zalloc(mem->vmem_size, \
@@ -582,8 +559,10 @@ static int zstd_meminit(void)
 	zstd_kmem_cache[1] = kmem_cache_create(
 	    zstd_cache_config[1].cache_name, zstd_cache_size[1].kmem_size,
 	    0, NULL, NULL, NULL, NULL, NULL, 0);
+#if 0
 	create_vmem_cache(&zstd_vmem_cache[1], zstd_cache_config[1].cache_name, \
 	    zstd_cache_size[1].kmem_size);
+#endif
 	/*
 	 * Estimate the size of the ZSTD CCtx workspace required for each record
 	 * size at each compression level.
@@ -600,9 +579,11 @@ static int zstd_meminit(void)
 		/*
 		 * Preserve memory for bigger blocks using vmem
 		 */
+#if 0
 		create_vmem_cache(&zstd_vmem_cache[i], \
 		    zstd_cache_config[i].cache_name, \
 		    zstd_cache_size[i].kmem_size);
+#endif
 		zstd_kmem_cache[i] = kmem_cache_create(
 		    zstd_cache_config[i].cache_name,
 		    zstd_cache_size[i].kmem_size,
@@ -631,7 +612,7 @@ static int zstd_meminit(void)
 extern int __init
 zstd_init(void)
 {
-	mutex_init(&zstd_mutex, NULL, MUTEX_DEFAULT, NULL);
+	zstd_meminit();
 	return (0);
 }
 
@@ -654,7 +635,6 @@ zstd_fini(void)
 			}
 		}
 	}
-	mutex_destroy(&zstd_mutex);
 }
 
 

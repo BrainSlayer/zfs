@@ -57,7 +57,7 @@ enum zio_compress {
 
 #define	ZIO_ZSTD_LEVEL_MIN	1
 #define	ZIO_ZSTD_LEVEL_DEFAULT	3
-#define	ZIO_ZSTD_LEVEL_MAX	19
+#define	ZIO_ZSTD_LEVEL_MAX	22
 
 enum zio_zstd_levels {
 	ZIO_ZSTDLVL_INHERIT = 0,
@@ -80,6 +80,9 @@ enum zio_zstd_levels {
 	ZIO_ZSTDLVL_17,
 	ZIO_ZSTDLVL_18,
 	ZIO_ZSTDLVL_19,
+	ZIO_ZSTDLVL_20,
+	ZIO_ZSTDLVL_21,
+	ZIO_ZSTDLVL_22,
 #define	ZIO_ZSTDLVL_MAX ZIO_ZSTDLVL_19
 	ZIO_ZSTDLVL_RESERVE = 31, /* Leave room for new positive levels */
 	ZIO_ZSTDLVL_FAST, /* Fast levels are negative */
