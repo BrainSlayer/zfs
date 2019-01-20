@@ -115,11 +115,11 @@ static struct zstd_kmem zstd_cache_size[ZSTD_KMEM_COUNT] = {
 	{ ZSTD_KMEM_MAGIC, 0, 0, B_FALSE} };
 
 static struct zstd_vmem zstd_vmem_cache[ZSTD_KMEM_COUNT] = {
-	{ 
-	.vmem_size = 0,
-	.vm = NULL, 
-	.inuse = B_FALSE
-	} 
+	    {
+	    .vmem_size = 0,
+	    .vm = NULL,
+	    .inuse = B_FALSE
+	    }
 	};
 static struct zstd_kmem_config zstd_cache_config[ZSTD_KMEM_COUNT] = {
 	{ 0, 0, "zstd_unknown" },
@@ -295,10 +295,6 @@ zstd_compress(void *s_start, void *d_start, size_t s_len, size_t d_len, int n)
 
 	/* Signal an error if the compression routine returned an error. */
 	if (ZSTD_isError(c_len)) {
-#ifdef _KERNEL
-		if (c_len != (size_t)-70)
-			printk(KERN_INFO "zstd: compress error code %ld\n", c_len);
-#endif
 		return (s_len);
 	}
 
@@ -336,9 +332,6 @@ zstd_decompress(void *s_start, void *d_start, size_t s_len, size_t d_len, int n)
 
 	/* invalid compressed buffer size encoded at start */
 	if (bufsiz + sizeof (bufsiz) > s_len) {
-#ifdef _KERNEL
-		printk(KERN_INFO "zstd: invalid compressed buffer size\n");
-#endif
 		return (1);
 	}
 
@@ -350,9 +343,6 @@ zstd_decompress(void *s_start, void *d_start, size_t s_len, size_t d_len, int n)
 	    &src[sizeof (bufsiz) + sizeof (zstdlevel)], \
 	    d_start, bufsiz, d_len);
 	if (ZSTD_isError(len)) {
-#ifdef _KERNEL
-		printk(KERN_INFO "zstd: decompression failed %ld\n", len);
-#endif
 		return (1);
 	}
 
@@ -466,9 +456,6 @@ zstd_alloc(void *opaque __unused, size_t size)
 	}
 	/* fallback if everything fails */
 	if (!z && zstd_vmem_cache[type].vm && type == ZSTD_KMEM_DCTX) {
-#ifdef _KERNEL
-		printk(KERN_INFO "hit barrier for %ld bytes\n", nbytes);
-#endif
 		mutex_enter(&zstd_vmem_cache[type].barrier);
 		mutex_exit(&zstd_vmem_cache[type].barrier);
 
@@ -481,18 +468,11 @@ zstd_alloc(void *opaque __unused, size_t size)
 			z->isvm = B_TRUE;
 		}
 	}
-			
+
 
 	/* allocation should always be successful */
 	ASSERT0(z);
-#ifdef _KERNEL
-	if (vm == 2)
-		printk(KERN_INFO "zstd: standard vmem_zalloc %ld failed. but vmalloc worked\n", size);
-#endif
 	if (z == NULL) {
-#ifdef _KERNEL
-		printk(KERN_INFO "zstd: memory allocation of %ld bytes failed %s\n", size, vm ? "(vmalloc)" : "(kmalloc)");
-#endif
 		return (NULL);
 	}
 
@@ -518,8 +498,8 @@ zstd_free(void *opaque __unused, void *ptr)
 	} else {
 		if (zstd_kmem_cache[type] && z->isvm == B_FALSE) {
 			kmem_cache_free(zstd_kmem_cache[type], z);
-		} else if (zstd_vmem_cache[type].vm \
-		    && zstd_vmem_cache[type].inuse == B_TRUE) {
+		} else if (zstd_vmem_cache[type].vm && \
+		    zstd_vmem_cache[type].inuse == B_TRUE) {
 			zstd_vmem_cache[type].inuse = B_FALSE;
 			/* release barrier */
 			mutex_exit(&zstd_vmem_cache[type].barrier);
@@ -535,13 +515,10 @@ zstd_free(void *opaque __unused, void *ptr)
 static void create_vmem_cache(struct zstd_vmem *mem, char *name, size_t size)
 {
 #ifdef _KERNEL
-	printk(KERN_INFO "preallocate fallback space %s:%ld\n", name, size);
 	mem->vmem_size = size;
 	mem->vm = \
 	    vmem_zalloc(mem->vmem_size, \
 	    KM_SLEEP);
-	if (!mem->vm)
-	    printk(KERN_INFO "failed!!!\n");
 	mem->inuse = B_FALSE;
 	mutex_init(&mem->barrier, \
 	    NULL, MUTEX_DEFAULT, NULL);
@@ -560,8 +537,8 @@ static int zstd_meminit(void)
 	    zstd_cache_config[1].cache_name, zstd_cache_size[1].kmem_size,
 	    0, NULL, NULL, NULL, NULL, NULL, 0);
 #if 0
-	create_vmem_cache(&zstd_vmem_cache[1], zstd_cache_config[1].cache_name, \
-	    zstd_cache_size[1].kmem_size);
+	create_vmem_cache(&zstd_vmem_cache[1], \
+	    zstd_cache_config[1].cache_name, zstd_cache_size[1].kmem_size);
 #endif
 	/*
 	 * Estimate the size of the ZSTD CCtx workspace required for each record
@@ -598,9 +575,8 @@ static int zstd_meminit(void)
 	zstd_kmem_cache[i] = kmem_cache_create(zstd_cache_config[i].cache_name,
 	    zstd_cache_size[i].kmem_size, 0, NULL, NULL, NULL, NULL, NULL, 0);
 
-
-	create_vmem_cache(&zstd_vmem_cache[i], zstd_cache_config[i].cache_name, \
-	    zstd_cache_size[i].kmem_size);
+	create_vmem_cache(&zstd_vmem_cache[i], \
+	    zstd_cache_config[i].cache_name, zstd_cache_size[i].kmem_size);
 
 	/* Sort the kmem caches for later searching */
 	zstd_qsort(zstd_cache_size, ZSTD_KMEM_COUNT, sizeof (struct zstd_kmem),
