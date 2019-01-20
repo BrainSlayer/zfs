@@ -434,7 +434,7 @@ real_zstd_alloc(size_t size)
 			if (zstd_kmem_cache[type]) {
 				z = kmem_cache_alloc( \
 				    zstd_kmem_cache[type], \
-				    KM_NOSLEEP);
+				    KM_SLEEP);
 				if (z) {
 					memset(z, 0, nbytes);
 					z->isvm = B_FALSE;
@@ -455,7 +455,7 @@ real_zstd_alloc(size_t size)
 		if (nbytes > spl_kmem_alloc_max || \
 		    nbytes > spl_kmem_alloc_warn) {
 			vm = 1;
-			z = vmem_zalloc(nbytes, KM_NOSLEEP);
+			z = vmem_zalloc(nbytes, KM_SLEEP);
 			if (!z) {
 				vm = 2;
 				z = vmalloc(nbytes);
@@ -463,7 +463,7 @@ real_zstd_alloc(size_t size)
 		}
 		else
 #endif
-			z = kmem_zalloc(nbytes, KM_NOSLEEP);
+			z = kmem_zalloc(nbytes, KM_SLEEP);
 	}
 	/* fallback if everything fails */
 	if (!z && zstd_vmem_cache[type].vm && type != ZSTD_KMEM_UNKNOWN) {
@@ -562,7 +562,7 @@ static void create_vmem_cache(struct zstd_vmem *mem, char *name, size_t size)
 	mem->vmem_size = size;
 	mem->vm = \
 	    vmem_zalloc(mem->vmem_size, \
-	    KM_NOSLEEP);
+	    KM_SLEEP);
 	if (!mem->vm)
 	    printk(KERN_INFO "failed!!!\n");
 	mem->inuse = B_FALSE;
