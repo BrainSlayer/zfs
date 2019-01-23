@@ -440,6 +440,7 @@ zstd_alloc(void *opaque __unused, size_t size)
 					memset(z, 0, nbytes);
 					z->isvm = B_FALSE;
 				}
+				
 			}
 			break;
 		}
@@ -467,8 +468,8 @@ zstd_alloc(void *opaque __unused, size_t size)
 		mutex_enter(&zstd_vmem_cache[type].barrier);
 		mutex_exit(&zstd_vmem_cache[type].barrier);
 
-
 		mutex_enter(&zstd_vmem_cache[type].barrier);
+		newtype = ZSTD_KMEM_DCTX;
 		zstd_vmem_cache[type].inuse = B_TRUE;
 		z = zstd_vmem_cache[type].vm;
 		if (z) {
