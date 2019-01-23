@@ -94,6 +94,7 @@ struct zstd_kmem {
 	uint_t			kmem_magic;
 	enum zstd_kmem_type	kmem_type;
 	size_t			kmem_size;
+	int			kmem_flags;
 	boolean_t		isvm;
 };
 
@@ -108,36 +109,42 @@ struct zstd_kmem_config {
 	size_t			block_size;
 	int			compress_level;
 	char			*cache_name;
+	int 			flags;
 };
 
 static kmem_cache_t *zstd_kmem_cache[ZSTD_KMEM_COUNT] = { NULL };
 static struct zstd_kmem zstd_cache_size[ZSTD_KMEM_COUNT] = {
-	{ ZSTD_KMEM_MAGIC, 0, 0, B_FALSE} };
+	{ ZSTD_KMEM_MAGIC, 0, 0, KM_NOSLEEP, B_FALSE} };
 
 static struct zstd_vmem zstd_vmem_cache[ZSTD_KMEM_COUNT] = {
-	    {
-	    .vmem_size = 0,
-	    .vm = NULL,
-	    .inuse = B_FALSE
-	    }
+		{
+		.vmem_size = 0,
+		.vm = NULL,
+		.inuse = B_FALSE
+		}
 	};
 static struct zstd_kmem_config zstd_cache_config[ZSTD_KMEM_COUNT] = {
-	{ 0, 0, "zstd_unknown" },
-	{ 0, 0, "zstd_cctx" },
-	{ 4096, ZIO_ZSTD_LEVEL_MIN, "zstd_wrkspc_4k_min" },
-	{ 4096, ZIO_ZSTD_LEVEL_DEFAULT, "zstd_wrkspc_4k_def" },
-	{ 4096, ZIO_ZSTD_LEVEL_MAX, "zstd_wrkspc_4k_max" },
-	{ 16384, ZIO_ZSTD_LEVEL_MIN, "zstd_wrkspc_16k_min" },
-	{ 16384, ZIO_ZSTD_LEVEL_DEFAULT, "zstd_wrkspc_16k_def" },
-	{ 16384, ZIO_ZSTD_LEVEL_MAX, "zstd_wrkspc_16k_max" },
-	{ SPA_OLD_MAXBLOCKSIZE, ZIO_ZSTD_LEVEL_MIN, "zstd_wrkspc_128k_min" },
+	{ 0, 0, "zstd_unknown", KM_SLEEP},
+	{ 0, 0, "zstd_cctx", KM_NOSLEEP },
+	{ 4096, ZIO_ZSTD_LEVEL_MIN, "zstd_wrkspc_4k_min", KM_NOSLEEP},
+	{ 4096, ZIO_ZSTD_LEVEL_DEFAULT, "zstd_wrkspc_4k_def", KM_NOSLEEP},
+	{ 4096, ZIO_ZSTD_LEVEL_MAX, "zstd_wrkspc_4k_max", KM_NOSLEEP},
+	{ 16384, ZIO_ZSTD_LEVEL_MIN, "zstd_wrkspc_16k_min", KM_NOSLEEP},
+	{ 16384, ZIO_ZSTD_LEVEL_DEFAULT, "zstd_wrkspc_16k_def", KM_NOSLEEP},
+	{ 16384, ZIO_ZSTD_LEVEL_MAX, "zstd_wrkspc_16k_max", KM_NOSLEEP},
+	{ SPA_OLD_MAXBLOCKSIZE, ZIO_ZSTD_LEVEL_MIN, \
+	    "zstd_wrkspc_128k_min", KM_NOSLEEP},
 	{ SPA_OLD_MAXBLOCKSIZE, ZIO_ZSTD_LEVEL_DEFAULT,
-	    "zstd_wrkspc_128k_def" },
-	{ SPA_OLD_MAXBLOCKSIZE, ZIO_ZSTD_LEVEL_MAX, "zstd_wrkspc_128k_max" },
-	{ SPA_MAXBLOCKSIZE, ZIO_ZSTD_LEVEL_MIN, "zstd_wrkspc_16m_min" },
-	{ SPA_MAXBLOCKSIZE, ZIO_ZSTD_LEVEL_DEFAULT, "zstd_wrkspc_16m_def" },
-	{ SPA_MAXBLOCKSIZE, ZIO_ZSTD_LEVEL_MAX, "zstd_wrkspc_16m_max" },
-	{ 0, 0, "zstd_dctx" },
+	    "zstd_wrkspc_128k_def", KM_NOSLEEP},
+	{ SPA_OLD_MAXBLOCKSIZE, ZIO_ZSTD_LEVEL_MAX, \
+	    "zstd_wrkspc_128k_max", KM_NOSLEEP},
+	{ SPA_MAXBLOCKSIZE, ZIO_ZSTD_LEVEL_MIN, \
+	    "zstd_wrkspc_16m_min", KM_NOSLEEP},
+	{ SPA_MAXBLOCKSIZE, ZIO_ZSTD_LEVEL_DEFAULT, \
+	    "zstd_wrkspc_16m_def", KM_NOSLEEP},
+	{ SPA_MAXBLOCKSIZE, ZIO_ZSTD_LEVEL_MAX, \
+	    "zstd_wrkspc_16m_max", KM_NOSLEEP},
+	{ 0, 0, "zstd_dctx", KM_SLEEP},
 };
 
 static int
@@ -332,6 +339,9 @@ zstd_decompress(void *s_start, void *d_start, size_t s_len, size_t d_len, int n)
 
 	/* invalid compressed buffer size encoded at start */
 	if (bufsiz + sizeof (bufsiz) > s_len) {
+#ifdef _KERNEL
+		printk(KERN_INFO "zstd: invalid compressed buffer size\n");
+#endif
 		return (1);
 	}
 
@@ -343,6 +353,9 @@ zstd_decompress(void *s_start, void *d_start, size_t s_len, size_t d_len, int n)
 	    &src[sizeof (bufsiz) + sizeof (zstdlevel)], \
 	    d_start, bufsiz, d_len);
 	if (ZSTD_isError(len)) {
+#ifdef _KERNEL
+		printk(KERN_INFO "zstd: decompression failed %ld\n", len);
+#endif
 		return (1);
 	}
 
@@ -415,7 +428,6 @@ zstd_alloc(void *opaque __unused, size_t size)
 	enum zstd_kmem_type type;
 	enum zstd_kmem_type newtype;
 	int i;
-	int vm = 0;
 	type = ZSTD_KMEM_UNKNOWN;
 	for (i = 0; i < ZSTD_KMEM_COUNT; i++) {
 		if (nbytes <= zstd_cache_size[i].kmem_size) {
@@ -423,7 +435,7 @@ zstd_alloc(void *opaque __unused, size_t size)
 			if (zstd_kmem_cache[type]) {
 				z = kmem_cache_alloc( \
 				    zstd_kmem_cache[type], \
-				    KM_SLEEP);
+				    zstd_cache_size[i].kmem_flags);
 				if (z) {
 					memset(z, 0, nbytes);
 					z->isvm = B_FALSE;
@@ -435,7 +447,6 @@ zstd_alloc(void *opaque __unused, size_t size)
 	newtype = type;
 	/* No matching cache */
 	if (type == ZSTD_KMEM_UNKNOWN || z == NULL) {
-		newtype = ZSTD_KMEM_UNKNOWN;
 		/*
 		 * consider max allocation size
 		 * so we need to use standard vmem allocator
@@ -443,16 +454,13 @@ zstd_alloc(void *opaque __unused, size_t size)
 #ifdef _KERNEL
 		if (nbytes > spl_kmem_alloc_max || \
 		    nbytes > spl_kmem_alloc_warn) {
-			vm = 1;
 			z = vmem_zalloc(nbytes, KM_SLEEP);
-			if (!z) {
-				vm = 2;
-				z = vmalloc(nbytes);
-			}
 		}
 		else
 #endif
 			z = kmem_zalloc(nbytes, KM_SLEEP);
+		if (z)
+			newtype = ZSTD_KMEM_UNKNOWN;
 	}
 	/* fallback if everything fails */
 	if (!z && zstd_vmem_cache[type].vm && type == ZSTD_KMEM_DCTX) {
@@ -468,7 +476,6 @@ zstd_alloc(void *opaque __unused, size_t size)
 			z->isvm = B_TRUE;
 		}
 	}
-
 
 	/* allocation should always be successful */
 	ASSERT0(z);
@@ -536,10 +543,8 @@ static int zstd_meminit(void)
 	zstd_kmem_cache[1] = kmem_cache_create(
 	    zstd_cache_config[1].cache_name, zstd_cache_size[1].kmem_size,
 	    0, NULL, NULL, NULL, NULL, NULL, 0);
-#if 0
-	create_vmem_cache(&zstd_vmem_cache[1], \
-	    zstd_cache_config[1].cache_name, zstd_cache_size[1].kmem_size);
-#endif
+	zstd_cache_size[1].kmem_flags = zstd_cache_config[1].flags;
+
 	/*
 	 * Estimate the size of the ZSTD CCtx workspace required for each record
 	 * size at each compression level.
@@ -553,14 +558,7 @@ static int zstd_meminit(void)
 		    ZSTD_getCParams(zstd_cache_config[i].compress_level,
 		    zstd_cache_config[i].block_size, 0)) +
 		    sizeof (struct zstd_kmem), PAGESIZE);
-		/*
-		 * Preserve memory for bigger blocks using vmem
-		 */
-#if 0
-		create_vmem_cache(&zstd_vmem_cache[i], \
-		    zstd_cache_config[i].cache_name, \
-		    zstd_cache_size[i].kmem_size);
-#endif
+		zstd_cache_size[i].kmem_flags = zstd_cache_config[i].flags;
 		zstd_kmem_cache[i] = kmem_cache_create(
 		    zstd_cache_config[i].cache_name,
 		    zstd_cache_size[i].kmem_size,
@@ -574,9 +572,12 @@ static int zstd_meminit(void)
 	    sizeof (struct zstd_kmem), PAGESIZE);
 	zstd_kmem_cache[i] = kmem_cache_create(zstd_cache_config[i].cache_name,
 	    zstd_cache_size[i].kmem_size, 0, NULL, NULL, NULL, NULL, NULL, 0);
+	zstd_cache_size[i].kmem_flags = zstd_cache_config[i].flags;
+
 
 	create_vmem_cache(&zstd_vmem_cache[i], \
-	    zstd_cache_config[i].cache_name, zstd_cache_size[i].kmem_size);
+	    zstd_cache_config[i].cache_name, \
+	    zstd_cache_size[i].kmem_size);
 
 	/* Sort the kmem caches for later searching */
 	zstd_qsort(zstd_cache_size, ZSTD_KMEM_COUNT, sizeof (struct zstd_kmem),
