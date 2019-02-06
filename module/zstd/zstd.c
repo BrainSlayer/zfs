@@ -440,7 +440,6 @@ zstd_alloc(void *opaque __unused, size_t size)
 					memset(z, 0, nbytes);
 					z->isvm = B_FALSE;
 				}
-				
 			}
 			break;
 		}
@@ -453,13 +452,10 @@ zstd_alloc(void *opaque __unused, size_t size)
 		 * so we need to use standard vmem allocator
 		 */
 #ifdef _KERNEL
-		if (nbytes > spl_kmem_alloc_max || \
-		    nbytes > spl_kmem_alloc_warn) {
-			z = vmem_zalloc(nbytes, KM_SLEEP);
-		}
-		else
+		z = vmem_zalloc(nbytes, KM_SLEEP);
+#else
+		z = kmem_zalloc(nbytes, KM_SLEEP);
 #endif
-			z = kmem_zalloc(nbytes, KM_SLEEP);
 		if (z)
 			newtype = ZSTD_KMEM_UNKNOWN;
 	}
@@ -543,7 +539,7 @@ static int zstd_meminit(void)
 	    + sizeof (struct zstd_kmem), PAGESIZE);
 	zstd_kmem_cache[1] = kmem_cache_create(
 	    zstd_cache_config[1].cache_name, zstd_cache_size[1].kmem_size,
-	    0, NULL, NULL, NULL, NULL, NULL, 0);
+	    0, NULL, NULL, NULL, NULL, NULL, KMC_KVMEM);
 	zstd_cache_size[1].kmem_flags = zstd_cache_config[1].flags;
 
 	/*
@@ -563,7 +559,7 @@ static int zstd_meminit(void)
 		zstd_kmem_cache[i] = kmem_cache_create(
 		    zstd_cache_config[i].cache_name,
 		    zstd_cache_size[i].kmem_size,
-		    0, NULL, NULL, NULL, NULL, NULL, 0);
+		    0, NULL, NULL, NULL, NULL, NULL, KMC_KVMEM);
 	}
 
 	/* Estimate the size of the decompression context */
@@ -572,7 +568,8 @@ static int zstd_meminit(void)
 	zstd_cache_size[i].kmem_size = P2ROUNDUP(ZSTD_estimateDCtxSize() +
 	    sizeof (struct zstd_kmem), PAGESIZE);
 	zstd_kmem_cache[i] = kmem_cache_create(zstd_cache_config[i].cache_name,
-	    zstd_cache_size[i].kmem_size, 0, NULL, NULL, NULL, NULL, NULL, 0);
+	    zstd_cache_size[i].kmem_size, 0, NULL, NULL, NULL, NULL, NULL,
+	    KMC_KVMEM);
 	zstd_cache_size[i].kmem_flags = zstd_cache_config[i].flags;
 
 

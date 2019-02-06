@@ -442,7 +442,7 @@ fi
 # be a normal user account, needs to be configured such that it can
 # run commands via sudo passwordlessly.
 #
-if [ "$(id -u)" = "0" ]; then
+if [ "$(id -u)" = "123" ]; then
 	fail "This script must not be run as root."
 fi
 

@@ -148,7 +148,6 @@ zio_compress_data(enum zio_compress c, abd_t *src, void *dst, size_t s_len,
 	level = ci->ci_level;
 
 	if (c == ZIO_COMPRESS_ZSTD) {
-		ASSERT(zp != NULL);
 		if (zstd_level == ZIO_ZSTDLVL_DEFAULT)
 			level = ZIO_ZSTD_LEVEL_DEFAULT;
 		else
