@@ -2567,17 +2567,19 @@ show_import(nvlist_t *config)
 				break;
 
 			case ZPOOL_ERRATA_ZOL_8308_ENCRYPTION:
-				(void) printf(gettext(" action: Any existing "
-				    "encrypted datasets contain an on-disk "
-				    "incompatibility\n\twhich may cause "
-				    "on-disk corruption with 'zfs recv' and "
-				    "which needs\n\tto be corrected. Enable "
-				    "the bookmark_v2 feature, backup "
-				    "these datasets\n\tto new encrypted "
-				    "datasets, and destroy the old ones. "
-				    "If this pool does\n\tnot contain any "
-				    "encrypted datasets, simply enable the "
-				    "bookmark_v2\n\tfeature.\n"));
+				(void) printf(gettext(" action: Existing "
+				    "encrypted snapshots and bookmarks contain "
+				    "an on-disk\n\tincompatibility. This may "
+				    "cause on-disk corruption if they are used "
+				    "with\n\t'zfs recv'. To correct the issue, "
+				    "enable the bookmark_v2 feature. No "
+				    "additional\n\taction is needed if there "
+				    "are no encrypted snapshots or bookmarks. "
+				    "If preserving\n\tthe encrypted snapshots "
+				    "and bookmarks is required, use a non-raw "
+				    "send to backup\n\tand restore them. "
+				    "Alternately, they may be removed to "
+				    "resolve the\n\tincompatibility.\n"));
 				break;
 			default:
 				/*
@@ -7011,7 +7013,7 @@ print_scan_status(pool_scan_stat_t *ps)
 
 	scan_rate = pass_scanned / elapsed;
 	issue_rate = pass_issued / elapsed;
-	total_secs_left = (issue_rate != 0) ?
+	total_secs_left = (issue_rate != 0 && total >= issued) ?
 	    ((total - issued) / issue_rate) : UINT64_MAX;
 
 	days_left = total_secs_left / 60 / 60 / 24;
@@ -7045,7 +7047,8 @@ print_scan_status(pool_scan_stat_t *ps)
 	}
 
 	if (pause == 0) {
-		if (issue_rate >= 10 * 1024 * 1024) {
+		if (total_secs_left != UINT64_MAX &&
+		    issue_rate >= 10 * 1024 * 1024) {
 			(void) printf(gettext(", %llu days "
 			    "%02llu:%02llu:%02llu to go\n"),
 			    (u_longlong_t)days_left, (u_longlong_t)hours_left,
@@ -7633,16 +7636,19 @@ status_callback(zpool_handle_t *zhp, void *data)
 			break;
 
 		case ZPOOL_ERRATA_ZOL_8308_ENCRYPTION:
-			(void) printf(gettext("\tExisting encrypted datasets "
-			    "contain an on-disk incompatibility\n\twhich "
-			    "needs to be corrected.\n"));
-			(void) printf(gettext("action: To correct the issue "
-			    "enable the bookmark_v2 feature, backup\n\tany "
-			    "existing encrypted datasets to new encrypted "
-			    "datasets,\n\tand destroy the old ones. If this "
-			    "pool does not contain any\n\tencrypted "
-			    "datasets, simply enable the bookmark_v2 "
-			    "feature.\n"));
+			(void) printf(gettext("Existing encrypted snapshots "
+			    "and bookmarks contain an on-disk "
+			    "incompatibility.\n\tThis may cause on-disk "
+			    "corruption if they are used with 'zfs recv'."));
+			(void) printf(gettext(" action:  To correct the issue, "
+			    "enable the bookmark_v2 feature. No "
+			    "additional\n\taction is needed if there "
+			    "are no encrypted snapshots or bookmarks. "
+			    "If preserving\n\tthe encrypted snapshots "
+			    "and bookmarks is required, use a non-raw "
+			    "send to backup\n\tand restore them. "
+			    "Alternately, they may be removed to "
+			    "resolve the\n\tincompatibility.\n"));
 			break;
 
 		default:
