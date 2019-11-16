@@ -27,6 +27,7 @@
 #include <sys/kmem.h>
 #include <sys/vmem.h>
 #include <linux/mm.h>
+#include <linux/version.h>
 
 /*
  * As a general rule kmem_alloc() allocations should be small, preferably
@@ -224,7 +225,7 @@ spl_kmem_alloc_impl(size_t size, int flags, int node)
 	 * through the vmem_alloc()/vmem_zalloc() interfaces.
 	 */
 	if ((spl_kmem_alloc_warn > 0) && (size > spl_kmem_alloc_warn) &&
-	    !(flags & KM_VMEM)) {
+	    !(flags & KM_VMEM) && !(flags & KM_KVMEM)) {
 		printk(KERN_WARNING
 		    "Large kmem_alloc(%lu, 0x%x), please file an issue at:\n"
 		    "https://github.com/zfsonlinux/zfs/issues/new\n",
@@ -232,6 +233,9 @@ spl_kmem_alloc_impl(size_t size, int flags, int node)
 		dump_stack();
 	}
 
+	if (flags & KM_KVMEM) {
+		return (spl_kvmalloc(size, lflags));
+	}
 	/*
 	 * Use a loop because kmalloc_node() can fail when GFP_KERNEL is used
 	 * unlike kmem_alloc() with KM_SLEEP on Illumos.
@@ -257,14 +261,13 @@ spl_kmem_alloc_impl(size_t size, int flags, int node)
 				return (NULL);
 			}
 		} else {
-			if (flags & KM_VMEM) {
+			if (flags & KM_VMEM)
 				ptr = spl_kvmalloc(size, lflags);
-			} else {
+			else
 				ptr = kmalloc_node(size, lflags, node);
-			}
 		}
 
-		if (likely(ptr) || (flags & KM_NOSLEEP))
+		if (likely(ptr) || (flags & KM_NOSLEEP) || (flags & KM_ONCE))
 			return (ptr);
 
 		/*
