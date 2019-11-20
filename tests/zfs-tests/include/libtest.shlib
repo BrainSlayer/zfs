@@ -2539,13 +2539,7 @@ function get_compress_opts
 	typeset COMPRESS_OPTS
 	typeset GZIP_OPTS="gzip gzip-1 gzip-2 gzip-3 gzip-4 gzip-5 \
 			gzip-6 gzip-7 gzip-8 gzip-9"
-	typeset ZSTD_OPTS="zstd zstd-1 zstd-2 zstd-3 \
-			zstd-fast-1 zstd-fast-2 zstd-fast-3 \
-			zstd-fast-4 zstd-fast-5 zstd-fast-6 zstd-fast-7 \
-			zstd-fast-8 zstd-fast-9 zstd-fast-10 zstd-fast-20 \
-			zstd-fast-30 zstd-fast-40 zstd-fast-50 zstd-fast-60 \
-			zstd-fast-70 zstd-fast-80 zstd-fast-90 zstd-fast-100 \
-			zstd-fast-500 zstd-fast-1000"
+	typeset ZSTD_OPTS="zstd"
 
 	if [[ $1 == "zfs_compress" ]] ; then
 		COMPRESS_OPTS="on lzjb zle lz4 $ZSTD_OPTS"
