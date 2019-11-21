@@ -90,13 +90,97 @@ enum zstd_kmem_type {
 	ZSTD_KMEM_COUNT,
 };
 
+#define	ZSTD_POOL_MAX		16
+struct zstd_pool {
+	void *mem;
+	size_t size;
+	kmutex_t 		barrier;
+};
+
 struct zstd_kmem {
 	uint_t			kmem_magic;
 	enum zstd_kmem_type	kmem_type;
 	size_t			kmem_size;
 	int			kmem_flags;
+	struct zstd_pool	*pool;
 	boolean_t		isvm;
 };
+
+
+#ifdef _KERNEL
+static struct zstd_pool zstd_mempool[ZSTD_POOL_MAX];
+#endif
+
+void
+zstd_mempool_init(void)
+{
+#ifdef _KERNEL
+	int i;
+	for (i = 0; i < ZSTD_POOL_MAX; i++) {
+		mutex_init(&zstd_mempool[i].barrier, NULL, MUTEX_DEFAULT, NULL);
+	}
+#endif
+}
+void
+zstd_mempool_deinit(void)
+{
+#ifdef _KERNEL
+	int i;
+	struct zstd_pool *pool;
+	for (i = 0; i < ZSTD_POOL_MAX; i++) {
+		pool = &zstd_mempool[i];
+		mutex_tryenter(&pool->barrier);
+		mutex_exit(&pool->barrier);
+		kmem_free(pool->mem, pool->size);
+		pool->mem = NULL;
+		pool->size = 0;
+	}
+#endif
+}
+
+struct zstd_kmem *
+zstd_mempool_alloc(size_t size)
+{
+#ifdef _KERNEL
+	int i;
+	struct zstd_pool *pool;
+	struct zstd_kmem *z;
+	for (i = 0; i < ZSTD_POOL_MAX; i++) {
+		pool = &zstd_mempool[i];
+		if (mutex_tryenter(&pool->barrier)) {
+			if (!pool->mem) {
+				z = kvmem_zalloc(size, KM_SLEEP);
+				pool->mem = z;
+				if (!pool->mem) {
+					mutex_exit(&pool->barrier);
+					return (NULL);
+				}
+				z->pool = pool;
+				pool->size = size;
+				return (z);
+			} else {
+				if (size <= pool->size) {
+					return ((struct zstd_kmem *)pool->mem);
+				}
+			}
+			mutex_exit(&pool->barrier);
+		}
+	}
+#endif
+	return (kvmem_zalloc(size, KM_NOSLEEP));
+}
+
+void
+zstd_mempool_free(struct zstd_kmem *z)
+{
+#ifdef _KERNEL
+	struct zstd_pool *pool = z->pool;
+	memset(pool->mem + sizeof (struct zstd_kmem), 0,
+	    pool->size - sizeof (struct zstd_kmem));
+	mutex_exit(&pool->barrier);
+#endif
+}
+
 
 struct zstd_vmem {
 	size_t			vmem_size;
@@ -487,14 +571,17 @@ zstd_alloc(void *opaque __unused, size_t size)
 		 * so we need to use standard vmem allocator
 		 */
 #ifdef _KERNEL
-		z = vmem_zalloc(nbytes, KM_SLEEP);
+		if (type != ZSTD_KMEM_DCTX)
+			z = zstd_mempool_alloc(nbytes);
+		else
+			z = kmem_zalloc(nbytes, KM_NOSLEEP);
 #else
 		z = kmem_zalloc(nbytes, KM_SLEEP);
 #endif
 		if (z)
 			newtype = ZSTD_KMEM_UNKNOWN;
 	}
-	/* fallback if everything fails */
+	/* fallback if everything fails (decompression only) */
 	if (!z && zstd_vmem_cache[type].vm && type == ZSTD_KMEM_DCTX) {
 		mutex_enter(&zstd_vmem_cache[type].barrier);
 		mutex_exit(&zstd_vmem_cache[type].barrier);
@@ -532,7 +619,11 @@ zstd_free(void *opaque __unused, void *ptr)
 	ASSERT3U(z->kmem_type, >=, ZSTD_KMEM_UNKNOWN);
 	type = z->kmem_type;
 	if (type == ZSTD_KMEM_UNKNOWN) {
-		kmem_free(z, z->kmem_size);
+		if (z->pool) {
+			zstd_mempool_free(z);
+		} else {
+			kmem_free(z, z->kmem_size);
+		}
 	} else {
 		if (zstd_kmem_cache[type] && z->isvm == B_FALSE) {
 			kmem_cache_free(zstd_kmem_cache[type], z);
@@ -566,6 +657,7 @@ static int zstd_meminit(void)
 {
 	int i;
 
+	zstd_mempool_init();
 	/* There is no estimate function for the CCtx itself */
 	zstd_cache_size[1].kmem_magic = ZSTD_KMEM_MAGIC;
 	zstd_cache_size[1].kmem_type = 1;
@@ -644,6 +736,7 @@ zstd_fini(void)
 			}
 		}
 	}
+	zstd_mempool_deinit();
 }
 
 
@@ -657,5 +750,5 @@ EXPORT_SYMBOL(zstd_get_level);
 
 MODULE_DESCRIPTION("ZSTD Compression for ZFS");
 MODULE_LICENSE("Dual BSD/GPL");
-MODULE_VERSION("1.4.3");
+MODULE_VERSION("1.4.4");
 #endif
