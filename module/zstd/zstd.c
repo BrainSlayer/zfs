@@ -91,10 +91,13 @@ enum zstd_kmem_type {
 };
 
 #define	ZSTD_POOL_MAX		16
+#define	ZSTD_POOL_TIMEOUT	60 * 2
+
 struct zstd_pool {
 	void *mem;
 	size_t size;
 	kmutex_t 		barrier;
+	time_t timeout;
 };
 
 struct zstd_kmem {
@@ -107,24 +110,22 @@ struct zstd_kmem {
 };
 
 
-#ifdef _KERNEL
 static struct zstd_pool zstd_mempool[ZSTD_POOL_MAX];
-#endif
 
+/* initializes memory pool barrier mutexes */
 void
 zstd_mempool_init(void)
 {
-#ifdef _KERNEL
 	int i;
 	for (i = 0; i < ZSTD_POOL_MAX; i++) {
 		mutex_init(&zstd_mempool[i].barrier, NULL, MUTEX_DEFAULT, NULL);
 	}
-#endif
 }
+
+/* releases memory pool objects */
 void
 zstd_mempool_deinit(void)
 {
-#ifdef _KERNEL
 	int i;
 	struct zstd_pool *pool;
 	for (i = 0; i < ZSTD_POOL_MAX; i++) {
@@ -135,16 +136,22 @@ zstd_mempool_deinit(void)
 		pool->mem = NULL;
 		pool->size = 0;
 	}
-#endif
 }
 
+/*
+ * tries to get cached allocated buffer from memory pool and allocate new one
+ * if neccessary if a object is older than 2 minutes and does not fit to the
+ * requested size, it will be released and a new cached entry will be allocated
+ */
 struct zstd_kmem *
 zstd_mempool_alloc(size_t size)
 {
-#ifdef _KERNEL
 	int i;
 	struct zstd_pool *pool;
 	struct zstd_kmem *z;
+	boolean_t reclaimed = B_FALSE;
+	struct zstd_kmem *mem = NULL;
+
 	for (i = 0; i < ZSTD_POOL_MAX; i++) {
 		pool = &zstd_mempool[i];
 		if (mutex_tryenter(&pool->barrier)) {
@@ -157,28 +164,52 @@ zstd_mempool_alloc(size_t size)
 				}
 				z->pool = pool;
 				pool->size = size;
+				pool->timeout = gethrestime_sec() +
+				    ZSTD_POOL_TIMEOUT;
 				return (z);
 			} else {
 				if (size <= pool->size) {
+					pool->timeout = gethrestime_sec() +
+					    ZSTD_POOL_TIMEOUT;
 					return ((struct zstd_kmem *)pool->mem);
 				}
+			}
+			/*
+			 * free memory if size doesnt fit and object
+			 * is older than 2 minutes
+			 */
+			if (pool->mem && gethrestime_sec() > pool->timeout) {
+				kmem_free(pool->mem, pool->size);
+				pool->mem = NULL;
+				pool->size = 0;
+				pool->timeout = 0;
+				reclaimed = B_TRUE;
 			}
 			mutex_exit(&pool->barrier);
 		}
 	}
-#endif
-	return (kvmem_zalloc(size, KM_NOSLEEP));
+	/*
+	 * if a object was released from slot, we try a second attempt,
+	 * since we can now reallocate the slot with a new size
+	 */
+	if (reclaimed) {
+		mem = zstd_mempool_alloc(size);
+	}
+
+	return (mem ? mem : kvmem_zalloc(size, KM_NOSLEEP));
 }
 
+/*
+ * mark object as released by releasing the barrier
+ * mutex and clear the buffer
+ */
 void
 zstd_mempool_free(struct zstd_kmem *z)
 {
-#ifdef _KERNEL
 	struct zstd_pool *pool = z->pool;
 	memset(pool->mem + sizeof (struct zstd_kmem), 0,
 	    pool->size - sizeof (struct zstd_kmem));
 	mutex_exit(&pool->barrier);
-#endif
 }
 
 
