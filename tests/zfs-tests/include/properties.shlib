@@ -13,7 +13,7 @@
 # Copyright (c) 2012, 2016 by Delphix. All rights reserved.
 #
 
-typeset -a compress_prop_vals=('on' 'off' 'lzjb' 'gzip' 'zle' 'lz4' 'zstd')
+typeset -a compress_prop_vals=('off' 'lzjb' 'gzip' 'zle' 'lz4' 'zstd')
 typeset -a checksum_prop_vals=('on' 'off' 'fletcher2' 'fletcher4' 'sha256'
     'noparity' 'sha512' 'skein' 'edonr')
 typeset -a recsize_prop_vals=('512' '1024' '2048' '4096' '8192' '16384'

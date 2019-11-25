@@ -121,7 +121,7 @@ for fs in "$POOL" "$POOL/pclone" "$POOL/$FS" "$POOL/$FS/fs1" \
 	rand_set_prop $fs acltype "off" "noacl" "posixacl"
 	rand_set_prop $fs atime "on" "off"
 	rand_set_prop $fs checksum "on" "off" "fletcher2" "fletcher4" "sha256"
-	rand_set_prop $fs compression "on" "off" "lzjb" "gzip" "lz4" "zle" "zstd"
+	rand_set_prop $fs compression "off" "lzjb" "gzip" "lz4" "zle" "zstd"
 	rand_set_prop $fs copies "1" "2" "3"
 	rand_set_prop $fs devices "on" "off"
 	rand_set_prop $fs exec "on" "off"
