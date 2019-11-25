@@ -28,7 +28,7 @@
 /*
  * Copyright (c) 2016-2018 by Klara Systems Inc.
  * Copyright (c) 2016-2018 Allan Jude <allanjude@freebsd.org>
- * Copyright (c) 2018 Sebastian Gottschall <s.gottschall@dd-wrt.com>
+ * Copyright (c) 2018-2019 Sebastian Gottschall <s.gottschall@dd-wrt.com>
  */
 
 #include <sys/param.h>

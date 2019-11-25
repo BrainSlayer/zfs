@@ -2537,8 +2537,7 @@ function safe_to_destroy_pool { # $1 the pool name
 function get_compress_opts
 {
 	typeset COMPRESS_OPTS
-	typeset GZIP_OPTS="gzip gzip-1 gzip-2 gzip-3 gzip-4 gzip-5 \
-			gzip-6 gzip-7 gzip-8 gzip-9"
+	typeset GZIP_OPTS="gzip"
 	typeset ZSTD_OPTS="zstd"
 
 	if [[ $1 == "zfs_compress" ]] ; then
