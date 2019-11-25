@@ -242,7 +242,7 @@ static kmutex_t spa_l2cache_lock;
 static avl_tree_t spa_l2cache_avl;
 
 kmem_cache_t *spa_buffer_pool;
-spa_mode_t spa_mode_global = SPA_MODE_UNINIT;
+int spa_mode_global;
 
 #ifdef ZFS_DEBUG
 /*
@@ -2282,7 +2282,7 @@ spa_boot_init(void)
 }
 
 void
-spa_init(spa_mode_t mode)
+spa_init(int mode)
 {
 	mutex_init(&spa_namespace_lock, NULL, MUTEX_DEFAULT, NULL);
 	mutex_init(&spa_spare_lock, NULL, MUTEX_DEFAULT, NULL);
@@ -2301,7 +2301,7 @@ spa_init(spa_mode_t mode)
 	spa_mode_global = mode;
 
 #ifndef _KERNEL
-	if (spa_mode_global != SPA_MODE_READ && dprintf_find_string("watch")) {
+	if (spa_mode_global != FREAD && dprintf_find_string("watch")) {
 		struct sigaction sa;
 
 		sa.sa_flags = SA_SIGINFO;
@@ -2324,6 +2324,9 @@ spa_init(spa_mode_t mode)
 	metaslab_stat_init();
 	ddt_init();
 	zio_init();
+#ifndef _KERNEL
+	zstd_init();
+#endif
 	dmu_init();
 	zil_init();
 	vdev_cache_stat_init();
@@ -2353,6 +2356,9 @@ spa_fini(void)
 	vdev_raidz_math_fini();
 	zil_fini();
 	dmu_fini();
+#ifndef _KERNEL
+	zstd_fini();
+#endif
 	zio_fini();
 	ddt_fini();
 	metaslab_stat_fini();
@@ -2406,7 +2412,7 @@ spa_is_root(spa_t *spa)
 boolean_t
 spa_writeable(spa_t *spa)
 {
-	return (!!(spa->spa_mode & SPA_MODE_WRITE) && spa->spa_trust_config);
+	return (!!(spa->spa_mode & FWRITE) && spa->spa_trust_config);
 }
 
 /*
@@ -2420,7 +2426,7 @@ spa_has_pending_synctask(spa_t *spa)
 	    !txg_all_lists_empty(&spa->spa_dsl_pool->dp_early_sync_tasks));
 }
 
-spa_mode_t
+int
 spa_mode(spa_t *spa)
 {
 	return (spa->spa_mode);
@@ -2670,7 +2676,7 @@ boolean_t
 spa_importing_readonly_checkpoint(spa_t *spa)
 {
 	return ((spa->spa_import_flags & ZFS_IMPORT_CHECKPOINT) &&
-	    spa->spa_mode == SPA_MODE_READ);
+	    spa->spa_mode == FREAD);
 }
 
 uint64_t
@@ -2724,7 +2730,7 @@ param_set_deadman_failmode(const char *val, zfs_kernel_param_t *kp)
 	    strcmp(val, "panic"))
 		return (SET_ERROR(-EINVAL));
 
-	if (spa_mode_global != SPA_MODE_UNINIT) {
+	if (spa_mode_global != 0) {
 		mutex_enter(&spa_namespace_lock);
 		while ((spa = spa_next(spa)) != NULL)
 			spa_set_deadman_failmode(spa, val);

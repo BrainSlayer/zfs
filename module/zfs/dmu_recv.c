@@ -61,7 +61,6 @@
 #ifdef _KERNEL
 #include <sys/zfs_vfsops.h>
 #endif
-#include <sys/zfs_file.h>
 
 int zfs_recv_queue_length = SPA_MAXBLOCKSIZE;
 int zfs_recv_queue_ff = 20;
@@ -591,6 +590,13 @@ dmu_recv_begin_check(void *arg, dmu_tx_t *tx)
 		dsflags |= DS_HOLD_FLAG_DECRYPT;
 	}
 
+	if ((featureflags & DMU_BACKUP_FEATURE_ZSTD) &&
+	    !spa_feature_is_enabled(dp->dp_spa, SPA_FEATURE_ZSTD_COMPRESS))
+		return (SET_ERROR(ENOTSUP));
+
+	if (!(DMU_STREAM_SUPPORTED(featureflags)))
+		return (SET_ERROR(ENOTSUP));
+
 	error = dsl_dataset_hold_flags(dp, tofs, dsflags, FTAG, &ds);
 	if (error == 0) {
 		/* target fs already exists; recv into temp clone */
@@ -1104,8 +1110,8 @@ dmu_recv_resume_begin_sync(void *arg, dmu_tx_t *tx)
 int
 dmu_recv_begin(char *tofs, char *tosnap, dmu_replay_record_t *drr_begin,
     boolean_t force, boolean_t resumable, nvlist_t *localprops,
-    nvlist_t *hidden_args, char *origin, dmu_recv_cookie_t *drc,
-    zfs_file_t *fp, offset_t *voffp)
+    nvlist_t *hidden_args, char *origin, dmu_recv_cookie_t *drc, vnode_t *vp,
+    offset_t *voffp)
 {
 	dmu_recv_begin_arg_t drba = { 0 };
 	int err;
@@ -1132,7 +1138,7 @@ dmu_recv_begin(char *tofs, char *tosnap, dmu_replay_record_t *drr_begin,
 		return (SET_ERROR(EINVAL));
 	}
 
-	drc->drc_fp = fp;
+	drc->drc_vp = vp;
 	drc->drc_voff = *voffp;
 	drc->drc_featureflags =
 	    DMU_GET_FEATUREFLAGS(drc->drc_drrb->drr_versioninfo);
@@ -1249,11 +1255,12 @@ receive_read(dmu_recv_cookie_t *drc, int len, void *buf)
 
 	while (done < len) {
 		ssize_t resid;
-		zfs_file_t *fp;
 
-		fp = drc->drc_fp;
-		drc->drc_err = zfs_file_read(fp, (char *)buf + done,
-		    len - done, &resid);
+		drc->drc_err = vn_rdwr(UIO_READ, drc->drc_vp,
+		    (char *)buf + done, len - done,
+		    drc->drc_voff, UIO_SYSSPACE, FAPPEND,
+		    RLIM64_INFINITY, CRED(), &resid);
+
 		if (resid == len - done) {
 			/*
 			 * Note: ECKSUM indicates that the receive
@@ -2251,20 +2258,22 @@ receive_read_record(dmu_recv_cookie_t *drc)
 			    !!DRR_IS_RAW_BYTESWAPPED(drrw->drr_flags) ^
 			    drc->drc_byteswap;
 
+			/* XXX: Allan: need complevel */
 			abuf = arc_loan_raw_buf(dmu_objset_spa(drc->drc_os),
 			    drrw->drr_object, byteorder, drrw->drr_salt,
 			    drrw->drr_iv, drrw->drr_mac, drrw->drr_type,
 			    drrw->drr_compressed_size, drrw->drr_logical_size,
-			    drrw->drr_compressiontype);
+			    drrw->drr_compressiontype, 0);
 		} else if (DRR_WRITE_COMPRESSED(drrw)) {
 			ASSERT3U(drrw->drr_compressed_size, >, 0);
 			ASSERT3U(drrw->drr_logical_size, >=,
 			    drrw->drr_compressed_size);
 			ASSERT(!is_meta);
+			/* XXX: Allan: need complevel */
 			abuf = arc_loan_compressed_buf(
 			    dmu_objset_spa(drc->drc_os),
 			    drrw->drr_compressed_size, drrw->drr_logical_size,
-			    drrw->drr_compressiontype);
+			    drrw->drr_compressiontype, 0);
 		} else {
 			abuf = arc_loan_buf(dmu_objset_spa(drc->drc_os),
 			    is_meta, drrw->drr_logical_size);
@@ -2335,11 +2344,12 @@ receive_read_record(dmu_recv_cookie_t *drc)
 			    !!DRR_IS_RAW_BYTESWAPPED(drrs->drr_flags) ^
 			    drc->drc_byteswap;
 
+			/* XXX: Allan: need complevel */
 			abuf = arc_loan_raw_buf(dmu_objset_spa(drc->drc_os),
 			    drrs->drr_object, byteorder, drrs->drr_salt,
 			    drrs->drr_iv, drrs->drr_mac, drrs->drr_type,
 			    drrs->drr_compressed_size, drrs->drr_length,
-			    drrs->drr_compressiontype);
+			    drrs->drr_compressiontype, 0);
 		} else {
 			abuf = arc_loan_buf(dmu_objset_spa(drc->drc_os),
 			    DMU_OT_IS_METADATA(drrs->drr_type),

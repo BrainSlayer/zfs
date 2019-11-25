@@ -49,7 +49,6 @@
 #include <sys/zio_compress.h>
 #include <sys/zio_priority.h>
 #include <sys/uio.h>
-#include <sys/zfs_file.h>
 
 #ifdef	__cplusplus
 extern "C" {
@@ -497,6 +496,7 @@ void dmu_object_set_checksum(objset_t *os, uint64_t object, uint8_t checksum,
  * Set the compress property on a dnode.  The new compression algorithm will
  * apply to all newly written blocks; existing blocks will not be affected.
  */
+/* XXX: Allan: complevel? */
 void dmu_object_set_compress(objset_t *os, uint64_t object, uint8_t compress,
     dmu_tx_t *tx);
 
@@ -1072,7 +1072,7 @@ void dmu_traverse_objset(objset_t *os, uint64_t txg_start,
     dmu_traverse_cb_t cb, void *arg);
 
 int dmu_diff(const char *tosnap_name, const char *fromsnap_name,
-    zfs_file_t *fp, offset_t *offp);
+    struct vnode *vp, offset_t *offp);
 
 /* CRC64 table */
 #define	ZFS_CRC64_POLY	0xC96C5795D7870F42ULL	/* ECMA-182, reflected form */

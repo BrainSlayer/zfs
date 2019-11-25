@@ -192,7 +192,6 @@
 #include <sys/fm/util.h>
 #include <sys/dsl_crypt.h>
 #include <sys/rrwlock.h>
-#include <sys/zfs_file.h>
 
 #include <sys/dmu_recv.h>
 #include <sys/dmu_send.h>
@@ -2041,6 +2040,34 @@ zfs_ioc_vdev_setfru(zfs_cmd_t *zc)
 }
 
 static int
+get_prop_uint64(nvlist_t *nv, const char *prop, nvlist_t **nvp,
+    uint64_t *val)
+{
+	int err = 0;
+	nvlist_t *subnv;
+	nvpair_t *pair;
+	nvpair_t *propval;
+
+	if (nvlist_lookup_nvpair(nv, prop, &pair) != 0)
+		return (EINVAL);
+
+	/* decode the property value */
+	propval = pair;
+	if (nvpair_type(pair) == DATA_TYPE_NVLIST) {
+		subnv = fnvpair_value_nvlist(pair);
+		if (nvp != NULL)
+			*nvp = subnv;
+		if (nvlist_lookup_nvpair(subnv, ZPROP_VALUE, &propval) != 0)
+			err = EINVAL;
+	}
+	if (nvpair_type(propval) == DATA_TYPE_UINT64) {
+		*val = fnvpair_value_uint64(propval);
+	}
+
+	return (err);
+}
+
+static int
 zfs_ioc_objset_stats_impl(zfs_cmd_t *zc, objset_t *os)
 {
 	int error = 0;
@@ -2067,6 +2094,28 @@ zfs_ioc_objset_stats_impl(zfs_cmd_t *zc, objset_t *os)
 			}
 			VERIFY0(error);
 		}
+		/*
+		 * ZSTD stores the compression level in a separate hidden
+		 * property to avoid using up a large number of bits in the
+		 * on-disk compression algorithm enum. We need to swap things
+		 * back around when the property is read.
+		 */
+		nvlist_t *cnv;
+		uint64_t compval, levelval;
+
+		if (get_prop_uint64(nv, "compression", &cnv, &compval) != 0)
+			compval = ZIO_COMPRESS_INHERIT;
+
+		if (error == 0 && compval == ZIO_COMPRESS_ZSTD &&
+		    get_prop_uint64(nv, "compress_level", NULL,
+		    &levelval) == 0) {
+			if (levelval == ZIO_COMPLEVEL_DEFAULT)
+				levelval = 0;
+			fnvlist_remove(cnv, ZPROP_VALUE);
+			fnvlist_add_uint64(cnv, ZPROP_VALUE,
+			    compval | (levelval << SPA_COMPRESSBITS));
+		}
+
 		if (error == 0)
 			error = put_nvlist(zc, nv);
 		nvlist_free(nv);
@@ -2509,6 +2558,32 @@ zfs_prop_set_special(const char *dsname, zprop_source_t source,
 		}
 		break;
 	}
+	case ZFS_PROP_COMPRESSION:
+		/* Special handling is only required for ZSTD */
+		if ((intval & SPA_COMPRESSMASK) != ZIO_COMPRESS_ZSTD) {
+			err = -1;
+			break;
+		}
+		/*
+		 * Store the ZSTD compression level separate from the compress
+		 * property in its own hidden property.
+		 */
+		uint64_t levelval;
+
+		if (intval == ZIO_COMPRESS_ZSTD) {
+			levelval = ZIO_COMPLEVEL_DEFAULT;
+		} else {
+			levelval = (intval & ~SPA_COMPRESSMASK)
+			    >> SPA_COMPRESSBITS;
+		}
+		err = dsl_prop_set_int(dsname, "compress_level", source,
+		    levelval);
+		if (err == 0) {
+			/* Store the compression algorithm normally */
+			err = dsl_prop_set_int(dsname, propname, source,
+			    intval & SPA_COMPRESSMASK);
+		}
+		break;
 	default:
 		err = -1;
 	}
@@ -4363,6 +4438,20 @@ zfs_check_settable(const char *dsname, nvpair_t *pair, cred_t *cr)
 				spa_close(spa, FTAG);
 			}
 
+			if (intval == ZIO_COMPRESS_ZSTD) {
+				spa_t *spa;
+
+				if ((err = spa_open(dsname, &spa, FTAG)) != 0)
+					return (err);
+
+				if (!spa_feature_is_enabled(spa,
+				    SPA_FEATURE_ZSTD_COMPRESS)) {
+					spa_close(spa, FTAG);
+					return (SET_ERROR(ENOTSUP));
+				}
+				spa_close(spa, FTAG);
+			}
+
 			/*
 			 * If this is a bootable dataset then
 			 * verify that the compression algorithm
@@ -4709,26 +4798,26 @@ zfs_ioc_recv_impl(char *tofs, char *tosnap, char *origin, nvlist_t *recvprops,
 	dmu_recv_cookie_t drc;
 	int error = 0;
 	int props_error = 0;
-	offset_t off, noff;
+	offset_t off;
 	nvlist_t *local_delayprops = NULL;
 	nvlist_t *recv_delayprops = NULL;
 	nvlist_t *origprops = NULL; /* existing properties */
 	nvlist_t *origrecvd = NULL; /* existing received properties */
 	boolean_t first_recvd_props = B_FALSE;
 	boolean_t tofs_was_redacted;
-	zfs_file_t *input_fp;
+	file_t *input_fp;
 
 	*read_bytes = 0;
 	*errflags = 0;
 	*errors = fnvlist_alloc();
-	off = 0;
 
-	if ((error = zfs_file_get(input_fd, &input_fp)))
-		return (error);
+	input_fp = getf(input_fd);
+	if (input_fp == NULL)
+		return (SET_ERROR(EBADF));
 
-	noff = off = zfs_file_off(input_fp);
+	off = input_fp->f_offset;
 	error = dmu_recv_begin(tofs, tosnap, begin_record, force,
-	    resumable, localprops, hidden_args, origin, &drc, input_fp,
+	    resumable, localprops, hidden_args, origin, &drc, input_fp->f_vnode,
 	    &off);
 	if (error != 0)
 		goto out;
@@ -4902,7 +4991,10 @@ zfs_ioc_recv_impl(char *tofs, char *tosnap, char *origin, nvlist_t *recvprops,
 		ASSERT(nvlist_merge(localprops, local_delayprops, 0) == 0);
 		nvlist_free(local_delayprops);
 	}
-	*read_bytes = off - noff;
+
+	*read_bytes = off - input_fp->f_offset;
+	if (VOP_SEEK(input_fp->f_vnode, input_fp->f_offset, &off, NULL) == 0)
+		input_fp->f_offset = off;
 
 #ifdef	DEBUG
 	if (zfs_ioc_recv_inject_err) {
@@ -5004,7 +5096,7 @@ zfs_ioc_recv_impl(char *tofs, char *tosnap, char *origin, nvlist_t *recvprops,
 		nvlist_free(inheritprops);
 	}
 out:
-	zfs_file_put(input_fd);
+	releasef(input_fd);
 	nvlist_free(origrecvd);
 	nvlist_free(origprops);
 
@@ -5219,8 +5311,8 @@ zfs_ioc_recv_new(const char *fsname, nvlist_t *innvl, nvlist_t *outnvl)
 }
 
 typedef struct dump_bytes_io {
-	zfs_file_t	*dbi_fp;
-	caddr_t		dbi_buf;
+	vnode_t		*dbi_vp;
+	void		*dbi_buf;
 	int		dbi_len;
 	int		dbi_err;
 } dump_bytes_io_t;
@@ -5229,13 +5321,11 @@ static void
 dump_bytes_cb(void *arg)
 {
 	dump_bytes_io_t *dbi = (dump_bytes_io_t *)arg;
-	zfs_file_t *fp;
-	caddr_t buf;
+	ssize_t resid; /* have to get resid to get detailed errno */
 
-	fp = dbi->dbi_fp;
-	buf = dbi->dbi_buf;
-
-	dbi->dbi_err = zfs_file_write(fp, buf, dbi->dbi_len, NULL);
+	dbi->dbi_err = vn_rdwr(UIO_WRITE, dbi->dbi_vp,
+	    (caddr_t)dbi->dbi_buf, dbi->dbi_len,
+	    0, UIO_SYSSPACE, FAPPEND, RLIM64_INFINITY, CRED(), &resid);
 }
 
 static int
@@ -5243,7 +5333,7 @@ dump_bytes(objset_t *os, void *buf, int len, void *arg)
 {
 	dump_bytes_io_t dbi;
 
-	dbi.dbi_fp = arg;
+	dbi.dbi_vp = arg;
 	dbi.dbi_buf = buf;
 	dbi.dbi_len = len;
 
@@ -5346,21 +5436,22 @@ zfs_ioc_send(zfs_cmd_t *zc)
 		dsl_dataset_rele(tosnap, FTAG);
 		dsl_pool_rele(dp, FTAG);
 	} else {
-		zfs_file_t *fp;
+		file_t *fp = getf(zc->zc_cookie);
+		if (fp == NULL)
+			return (SET_ERROR(EBADF));
+
+		off = fp->f_offset;
 		dmu_send_outparams_t out = {0};
-
-		if ((error = zfs_file_get(zc->zc_cookie, &fp)))
-			return (error);
-
-		off = zfs_file_off(fp);
 		out.dso_outfunc = dump_bytes;
-		out.dso_arg = fp;
+		out.dso_arg = fp->f_vnode;
 		out.dso_dryrun = B_FALSE;
 		error = dmu_send_obj(zc->zc_name, zc->zc_sendobj,
 		    zc->zc_fromobj, embedok, large_block_ok, compressok, rawok,
 		    zc->zc_cookie, &off, &out);
 
-		zfs_file_put(zc->zc_cookie);
+		if (VOP_SEEK(fp->f_vnode, fp->f_offset, &off, NULL) == 0)
+			fp->f_offset = off;
+		releasef(zc->zc_cookie);
 	}
 	return (error);
 }
@@ -5923,17 +6014,21 @@ zfs_ioc_tmp_snapshot(zfs_cmd_t *zc)
 static int
 zfs_ioc_diff(zfs_cmd_t *zc)
 {
-	zfs_file_t *fp;
+	file_t *fp;
 	offset_t off;
 	int error;
 
-	if ((error = zfs_file_get(zc->zc_cookie, &fp)))
-		return (error);
+	fp = getf(zc->zc_cookie);
+	if (fp == NULL)
+		return (SET_ERROR(EBADF));
 
-	off = zfs_file_off(fp);
-	error = dmu_diff(zc->zc_name, zc->zc_value, fp, &off);
+	off = fp->f_offset;
 
-	zfs_file_put(zc->zc_cookie);
+	error = dmu_diff(zc->zc_name, zc->zc_value, fp->f_vnode, &off);
+
+	if (VOP_SEEK(fp->f_vnode, fp->f_offset, &off, NULL) == 0)
+		fp->f_offset = off;
+	releasef(zc->zc_cookie);
 
 	return (error);
 }
@@ -6273,7 +6368,7 @@ zfs_ioc_send_new(const char *snapname, nvlist_t *innvl, nvlist_t *outnvl)
 	offset_t off;
 	char *fromname = NULL;
 	int fd;
-	zfs_file_t *fp;
+	file_t *fp;
 	boolean_t largeblockok;
 	boolean_t embedok;
 	boolean_t compressok;
@@ -6296,19 +6391,21 @@ zfs_ioc_send_new(const char *snapname, nvlist_t *innvl, nvlist_t *outnvl)
 
 	(void) nvlist_lookup_string(innvl, "redactbook", &redactbook);
 
-	if ((error = zfs_file_get(fd, &fp)))
-		return (error);
+	if ((fp = getf(fd)) == NULL)
+		return (SET_ERROR(EBADF));
 
-	off = zfs_file_off(fp);
-
+	off = fp->f_offset;
 	dmu_send_outparams_t out = {0};
 	out.dso_outfunc = dump_bytes;
-	out.dso_arg = fp;
+	out.dso_arg = fp->f_vnode;
 	out.dso_dryrun = B_FALSE;
 	error = dmu_send(snapname, fromname, embedok, largeblockok, compressok,
 	    rawok, resumeobj, resumeoff, redactbook, fd, &off, &out);
 
-	zfs_file_put(fd);
+	if (VOP_SEEK(fp->f_vnode, fp->f_offset, &off, NULL) == 0)
+		fp->f_offset = off;
+
+	releasef(fd);
 	return (error);
 }
 
@@ -7431,7 +7528,7 @@ zfs_kmod_init(void)
 	if ((error = zvol_init()) != 0)
 		return (error);
 
-	spa_init(SPA_MODE_READ | SPA_MODE_WRITE);
+	spa_init(FREAD | FWRITE);
 	zfs_init();
 
 	zfs_ioctl_init();

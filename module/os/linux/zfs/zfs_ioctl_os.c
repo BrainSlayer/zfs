@@ -178,15 +178,15 @@ int
 zfsdev_getminor(int fd, minor_t *minorp)
 {
 	zfsdev_state_t *zs, *fpd;
-	struct file *fp;
-	int rc;
+	file_t *fp;
 
 	ASSERT(!MUTEX_HELD(&zfsdev_state_lock));
+	fp = getf(fd);
 
-	if ((rc = zfs_file_get(fd, &fp)))
-		return (rc);
+	if (fp == NULL)
+		return (SET_ERROR(EBADF));
 
-	fpd = fp->private_data;
+	fpd = fp->f_file->private_data;
 	if (fpd == NULL)
 		return (SET_ERROR(EBADF));
 

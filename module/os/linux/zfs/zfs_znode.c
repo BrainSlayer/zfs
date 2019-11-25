@@ -38,6 +38,7 @@
 #include <sys/file.h>
 #include <sys/kmem.h>
 #include <sys/errno.h>
+#include <sys/mode.h>
 #include <sys/atomic.h>
 #include <sys/zfs_dir.h>
 #include <sys/zfs_acl.h>
@@ -1094,8 +1095,7 @@ again:
 		ASSERT3U(zp->z_id, ==, obj_num);
 		/*
 		 * If zp->z_unlinked is set, the znode is already marked
-		 * for deletion and should not be discovered. Check this
-		 * after checking igrab() due to fsetxattr() & O_TMPFILE.
+		 * for deletion and should not be discovered.
 		 *
 		 * If igrab() returns NULL the VFS has independently
 		 * determined the inode should be evicted and has
@@ -1110,11 +1110,10 @@ again:
 		 * need to detect the active SA hold thereby informing
 		 * the VFS that this inode should not be evicted.
 		 */
-		if (igrab(ZTOI(zp)) == NULL) {
-			if (zp->z_unlinked)
-				err = SET_ERROR(ENOENT);
-			else
-				err = SET_ERROR(EAGAIN);
+		if (zp->z_unlinked) {
+			err = SET_ERROR(ENOENT);
+		} else if (igrab(ZTOI(zp)) == NULL) {
+			err = SET_ERROR(EAGAIN);
 		} else {
 			*zpp = zp;
 			err = 0;
@@ -1930,9 +1929,9 @@ zfs_create_fs(objset_t *os, cred_t *cr, nvlist_t *zplprops, dmu_tx_t *tx)
 
 	size = MIN(1 << (highbit64(zfs_object_mutex_size)-1), ZFS_OBJ_MTX_MAX);
 	zfsvfs->z_hold_size = size;
-	zfsvfs->z_hold_trees = vmem_zalloc(sizeof (avl_tree_t) * size,
+	zfsvfs->z_hold_trees = kvmem_zalloc(sizeof (avl_tree_t) * size,
 	    KM_SLEEP);
-	zfsvfs->z_hold_locks = vmem_zalloc(sizeof (kmutex_t) * size, KM_SLEEP);
+	zfsvfs->z_hold_locks = kvmem_zalloc(sizeof (kmutex_t) * size, KM_SLEEP);
 	for (i = 0; i != size; i++) {
 		avl_create(&zfsvfs->z_hold_trees[i], zfs_znode_hold_compare,
 		    sizeof (znode_hold_t), offsetof(znode_hold_t, zh_node));

@@ -1,4 +1,4 @@
-SUBDIRS = fm fs crypto lua sysevent
+SUBDIRS = fm fs crypto lua sysevent zstd
 
 COMMON_H = \
 	$(top_srcdir)/include/sys/abd.h \
@@ -104,7 +104,6 @@ COMMON_H = \
 	$(top_srcdir)/include/sys/zfs_context.h \
 	$(top_srcdir)/include/sys/zfs_debug.h \
 	$(top_srcdir)/include/sys/zfs_delay.h \
-	$(top_srcdir)/include/sys/zfs_file.h \
 	$(top_srcdir)/include/sys/zfs_fuid.h \
 	$(top_srcdir)/include/sys/zfs_project.h \
 	$(top_srcdir)/include/sys/zfs_ratelimit.h \

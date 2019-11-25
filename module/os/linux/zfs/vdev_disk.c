@@ -55,14 +55,16 @@ typedef struct dio_request {
 } dio_request_t;
 
 static fmode_t
-vdev_bdev_mode(spa_mode_t spa_mode)
+vdev_bdev_mode(int smode)
 {
 	fmode_t mode = 0;
 
-	if (spa_mode & SPA_MODE_READ)
+	ASSERT3S(smode & (FREAD | FWRITE), !=, 0);
+
+	if (smode & FREAD)
 		mode |= FMODE_READ;
 
-	if (spa_mode & SPA_MODE_WRITE)
+	if (smode & FWRITE)
 		mode |= FMODE_WRITE;
 
 	return (mode);
@@ -847,6 +849,9 @@ vdev_disk_hold(vdev_t *vd)
 	if (vd->vdev_tsd != NULL)
 		return;
 
+	/* XXX: Implement me as a vnode lookup for the device */
+	vd->vdev_name_vp = NULL;
+	vd->vdev_devid_vp = NULL;
 }
 
 static void
@@ -869,7 +874,7 @@ param_set_vdev_scheduler(const char *val, zfs_kernel_param_t *kp)
 	if ((p = strchr(val, '\n')) != NULL)
 		*p = '\0';
 
-	if (spa_mode_global != SPA_MODE_UNINIT) {
+	if (spa_mode_global != 0) {
 		mutex_enter(&spa_namespace_lock);
 		while ((spa = spa_next(spa)) != NULL) {
 			if (spa_state(spa) != POOL_STATE_ACTIVE ||
