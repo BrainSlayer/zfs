@@ -47,7 +47,7 @@ log_onexit cleanup
 datasetexists $POOL2 && log_must zpool destroy $POOL2
 log_must zpool create -d $POOL2 $DISK2
 
-for compress in off gzip zstd; do
+for compress in off gzip; do
 	for pool_opt in '' -d; do
 		poolexists $POOL3 && destroy_pool $POOL3
 		log_must zpool create $pool_opt $POOL3 $DISK3
