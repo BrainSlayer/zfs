@@ -158,8 +158,15 @@ zstd_mempool_deinit(void)
 
 /*
  * tries to get cached allocated buffer from memory pool and allocate new one
- * if neccessary if a object is older than 2 minutes and does not fit to the
+ * if neccessary. if a object is older than 2 minutes and does not fit to the
  * requested size, it will be released and a new cached entry will be allocated
+ * if other pooled objects are detected without beeing used for 2 minutes,
+ * they will be released too.
+ * the concept is that high frequency memory allocations of bigger objects are
+ * expensive.
+ * so if alot of work is going on, allocations will be kept for a while and can
+ * be reused in that timeframe. the scheduled release will be updated every time
+ * a object is reused.
  */
 struct zstd_kmem *
 zstd_mempool_alloc(struct zstd_pool *zstd_mempool, size_t size)
