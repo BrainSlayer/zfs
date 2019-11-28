@@ -42,6 +42,7 @@
 #include <sys/zstd/zstd_errors.h>
 #include <sys/zstd/error_private.h>
 
+#define	POOL_ONLY 1
 
 #define	ZSTD_KMEM_MAGIC		0x20160831
 
@@ -602,8 +603,11 @@ zstd_alloc(void *opaque __unused, size_t size)
 	struct zstd_kmem *z = NULL;
 	enum zstd_kmem_type type;
 	enum zstd_kmem_type newtype;
+#ifndef POOL_ONLY
 	int i;
+#endif
 	type = ZSTD_KMEM_UNKNOWN;
+#ifndef POOL_ONLY
 	for (i = 0; i < ZSTD_KMEM_COUNT; i++) {
 		if (nbytes <= zstd_cache_size[i].kmem_size) {
 			type = zstd_cache_size[i].kmem_type;
@@ -619,6 +623,7 @@ zstd_alloc(void *opaque __unused, size_t size)
 			break;
 		}
 	}
+#endif
 	newtype = type;
 	/* No matching cache */
 	if (type == ZSTD_KMEM_UNKNOWN || z == NULL) {
