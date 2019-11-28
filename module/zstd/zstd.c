@@ -181,7 +181,7 @@ zstd_mempool_alloc(struct zstd_pool *zstd_mempool, size_t size)
 		if (mutex_tryenter(&pool->barrier)) {
 			if (!pool->mem) {
 				struct zstd_kmem *z =
-				    kvmem_zalloc(size, KM_SLEEP);
+				    vmem_alloc(size, KM_SLEEP);
 				pool->mem = z;
 				if (!pool->mem) {
 					mutex_exit(&pool->barrier);
