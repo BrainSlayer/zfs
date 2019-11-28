@@ -221,7 +221,7 @@ zstd_mempool_alloc(struct zstd_pool *zstd_mempool, size_t size)
 		mem = zstd_mempool_alloc(zstd_mempool, size);
 	}
 
-	return (mem ? mem : kvmem_zalloc(size, KM_NOSLEEP));
+	return (mem ? mem : vmem_zalloc(size, KM_NOSLEEP));
 }
 
 /*
@@ -632,7 +632,7 @@ zstd_alloc(void *opaque __unused, size_t size)
 		else {
 			z = zstd_mempool_alloc(zstd_mempool_dctx, nbytes);
 			if (!z)
-				z = kvmem_zalloc(nbytes, KM_SLEEP);
+				z = vmem_zalloc(nbytes, KM_SLEEP);
 		}
 #else
 		z = kmem_zalloc(nbytes, KM_SLEEP);
@@ -724,7 +724,7 @@ static int zstd_meminit(void)
 	    + sizeof (struct zstd_kmem), PAGESIZE);
 	zstd_kmem_cache[1] = kmem_cache_create(
 	    zstd_cache_config[1].cache_name, zstd_cache_size[1].kmem_size,
-	    0, NULL, NULL, NULL, NULL, NULL, KMC_KVMEM);
+	    0, NULL, NULL, NULL, NULL, NULL, KMC_VMEM);
 	zstd_cache_size[1].kmem_flags = zstd_cache_config[1].flags;
 
 	/*
@@ -744,7 +744,7 @@ static int zstd_meminit(void)
 		zstd_kmem_cache[i] = kmem_cache_create(
 		    zstd_cache_config[i].cache_name,
 		    zstd_cache_size[i].kmem_size,
-		    0, NULL, NULL, NULL, NULL, NULL, KMC_KVMEM);
+		    0, NULL, NULL, NULL, NULL, NULL, KMC_VMEM);
 	}
 
 	/* Estimate the size of the decompression context */
@@ -754,7 +754,7 @@ static int zstd_meminit(void)
 	    sizeof (struct zstd_kmem), PAGESIZE);
 	zstd_kmem_cache[i] = kmem_cache_create(zstd_cache_config[i].cache_name,
 	    zstd_cache_size[i].kmem_size, 0, NULL, NULL, NULL, NULL, NULL,
-	    KMC_KVMEM);
+	    KMC_VMEM);
 	zstd_cache_size[i].kmem_flags = zstd_cache_config[i].flags;
 
 
