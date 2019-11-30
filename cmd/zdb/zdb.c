@@ -21,11 +21,12 @@
 
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2011, 2019 by Delphix. All rights reserved.
- * Copyright (c) 2014 Integros [integros.com]
- * Copyright 2016 Nexenta Systems, Inc.
- * Copyright (c) 2017, 2018 Lawrence Livermore National Security, LLC.
- * Copyright (c) 2015, 2017, Intel Corporation.
+ * Copyright (c) 2011, 2019 Delphix. All rights reserved.
+ * Copyright (c) 2014, Integros. All rights reserved.
+ * Copyright (c) 2016, Nexenta Systems, Inc. All rights reserved.
+ * Copyright (c) 2017, 2018 Lawrence Livermore National Security, LLC. All rights reserved.
+ * Copyright (c) 2015, 2017, Intel Corporation. All rights reserved.
+ * Use is subject to license terms.
  */
 
 #include <stdio.h>
