@@ -225,7 +225,7 @@ zstd_mempool_alloc(struct zstd_pool *zstd_mempool, size_t size)
 	 * maybe pool is full or allocation failed, lets do lazy allocation
 	 * try in that case
 	 */
-	return (mem ? mem : vmem_zalloc(size, KM_NOSLEEP));
+	return (mem ? mem : vmem_alloc(size, KM_NOSLEEP));
 }
 
 /*
@@ -236,19 +236,17 @@ void
 zstd_mempool_free(struct zstd_kmem *z)
 {
 	struct zstd_pool *pool = z->pool;
-	memset(pool->mem + sizeof (struct zstd_kmem), 0,
-	    pool->size - sizeof (struct zstd_kmem));
 	mutex_exit(&pool->barrier);
 }
 
 
-struct zstd_vmem {
-	size_t			vmem_size;
-	void			*vm;
+struct zstd_fallback_mem {
+	size_t			mem_size;
+	void			*mem;
 	kmutex_t 		barrier;
 };
 
-static struct zstd_vmem zstd_dctx_fallback;
+static struct zstd_fallback_mem zstd_dctx_fallback;
 
 static enum zio_zstd_levels
 zstd_cookie_to_enum(int32_t level)
@@ -575,7 +573,7 @@ zstd_dctx_alloc(void *opaque __unused, size_t size)
 		mutex_enter(&zstd_dctx_fallback.barrier);
 		mutex_exit(&zstd_dctx_fallback.barrier);
 		mutex_enter(&zstd_dctx_fallback.barrier);
-		z = zstd_dctx_fallback.vm;
+		z = zstd_dctx_fallback.mem;
 		type = ZSTD_KMEM_DCTX;
 	}
 
@@ -617,11 +615,11 @@ zstd_free(void *opaque __unused, void *ptr)
 #define	__exit
 #endif
 
-static void create_vmem_cache(struct zstd_vmem *mem, size_t size)
+static void create_fallback_mem(struct zstd_fallback_mem *mem, size_t size)
 {
-	mem->vmem_size = size;
-	mem->vm = \
-	    vmem_zalloc(mem->vmem_size, \
+	mem->mem_size = size;
+	mem->mem = \
+	    vmem_zalloc(mem->mem_size, \
 	    KM_SLEEP);
 	mutex_init(&mem->barrier, \
 	    NULL, MUTEX_DEFAULT, NULL);
@@ -631,7 +629,7 @@ static int zstd_meminit(void)
 	zstd_mempool_init();
 
 	/* Estimate the size of the fallback decompression context */
-	create_vmem_cache(&zstd_dctx_fallback,
+	create_fallback_mem(&zstd_dctx_fallback,
 	    P2ROUNDUP(ZSTD_estimateDCtxSize() +
 	    sizeof (struct zstd_kmem), PAGESIZE));
 
@@ -652,7 +650,7 @@ zstd_init(void)
 extern void __exit
 zstd_fini(void)
 {
-	kmem_free(zstd_dctx_fallback.vm, zstd_dctx_fallback.vmem_size);
+	kmem_free(zstd_dctx_fallback.mem, zstd_dctx_fallback.mem_size);
 	mutex_destroy(&zstd_dctx_fallback.barrier);
 	zstd_mempool_deinit();
 }
