@@ -193,7 +193,6 @@ compression_changed_cb(void *arg, uint64_t newval)
 	 */
 	ASSERT(newval != ZIO_COMPRESS_INHERIT);
 
-	/* XXX: ALLAN: Do we need the mask here? */
 	os->os_compress = zio_compress_select(os->os_spa,
 	    newval & SPA_COMPRESSMASK, ZIO_COMPRESS_ON);
 }

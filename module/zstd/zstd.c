@@ -131,7 +131,7 @@ zstd_mempool_init(void)
 static void
 release_pool(struct zstd_pool *pool)
 {
-	mutex_tryenter(&pool->barrier);
+	mutex_enter(&pool->barrier);
 	mutex_exit(&pool->barrier);
 	mutex_destroy(&pool->barrier);
 	kmem_free(pool->mem, pool->size);
