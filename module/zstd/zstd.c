@@ -180,6 +180,10 @@ zstd_mempool_alloc(struct zstd_pool *zstd_mempool, size_t size)
 	for (i = 0; i < ZSTD_POOL_MAX; i++) {
 		pool = &zstd_mempool[i];
 		if (mutex_tryenter(&pool->barrier)) {
+			/*
+			 * check if objects fits to size, if yes we take it
+			 * and update timestamp
+			 */
 			if (!mem && pool->mem && size <= pool->size) {
 				pool->timeout = gethrestime_sec() +
 				    ZSTD_POOL_TIMEOUT;
@@ -205,11 +209,17 @@ zstd_mempool_alloc(struct zstd_pool *zstd_mempool, size_t size)
 		for (i = 0; i < ZSTD_POOL_MAX; i++) {
 			pool = &zstd_mempool[i];
 			if (mutex_tryenter(&pool->barrier)) {
+				/* object is free, try to allocate new one */
 				if (!pool->mem) {
 					struct zstd_kmem *z =
 					    vmem_alloc(size, KM_SLEEP);
 					pool->mem = z;
+					/* allocation successfull? */
 					if (pool->mem) {
+						/*
+						 * keep track for later release
+						 * and update timestamp
+						 */
 						z->pool = pool;
 						pool->size = size;
 						pool->timeout =
