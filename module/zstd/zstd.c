@@ -42,8 +42,6 @@
 #include <sys/zstd/zstd_errors.h>
 #include <sys/zstd/error_private.h>
 
-#define	ZSTD_KMEM_MAGIC		0x20160831
-
 /* for BSD compat */
 #define	__unused			__attribute__((unused))
 
@@ -100,13 +98,18 @@ struct zstd_pool {
 };
 
 struct zstd_kmem {
-	uint_t			kmem_magic;
 	enum zstd_kmem_type	kmem_type;
 	size_t			kmem_size;
 	struct zstd_pool	*pool;
 };
 
+struct zstd_fallback_mem {
+	size_t			mem_size;
+	void			*mem;
+	kmutex_t 		barrier;
+};
 
+static struct zstd_fallback_mem zstd_dctx_fallback;
 static struct zstd_pool *zstd_mempool_cctx;
 static struct zstd_pool *zstd_mempool_dctx;
 
@@ -164,12 +167,12 @@ zstd_mempool_deinit(void)
  * be reused in that timeframe. the scheduled release will be updated every time
  * a object is reused.
  */
-struct zstd_kmem *
+void *
 zstd_mempool_alloc(struct zstd_pool *zstd_mempool, size_t size)
 {
 	int i;
 	struct zstd_pool *pool;
-	struct zstd_kmem *mem = NULL;
+	void *mem = NULL;
 
 	/*
 	 * seek for preallocated memory slot and free obsolete slots
@@ -180,7 +183,7 @@ zstd_mempool_alloc(struct zstd_pool *zstd_mempool, size_t size)
 			if (!mem && pool->mem && size <= pool->size) {
 				pool->timeout = gethrestime_sec() +
 				    ZSTD_POOL_TIMEOUT;
-				mem = (struct zstd_kmem *)pool->mem;
+				mem = pool->mem;
 				continue;
 			}
 			/*
@@ -215,7 +218,7 @@ zstd_mempool_alloc(struct zstd_pool *zstd_mempool, size_t size)
 					} else {
 						mutex_exit(&pool->barrier);
 					}
-					return ((struct zstd_kmem *)z);
+					return (z);
 				}
 				mutex_exit(&pool->barrier);
 			}
@@ -240,13 +243,6 @@ zstd_mempool_free(struct zstd_kmem *z)
 }
 
 
-struct zstd_fallback_mem {
-	size_t			mem_size;
-	void			*mem;
-	kmutex_t 		barrier;
-};
-
-static struct zstd_fallback_mem zstd_dctx_fallback;
 
 static enum zio_zstd_levels
 zstd_cookie_to_enum(int32_t level)
@@ -540,13 +536,12 @@ zstd_alloc(void *opaque __unused, size_t size)
 	size_t nbytes = sizeof (struct zstd_kmem) + size;
 	struct zstd_kmem *z = NULL;
 
-	z = zstd_mempool_alloc(zstd_mempool_cctx, nbytes);
+	z = (struct zstd_kmem *)zstd_mempool_alloc(zstd_mempool_cctx, nbytes);
 
 	if (z == NULL) {
 		return (NULL);
 	}
 
-	z->kmem_magic = ZSTD_KMEM_MAGIC;
 	z->kmem_type = ZSTD_KMEM_UNKNOWN;
 	z->kmem_size = nbytes;
 
@@ -560,7 +555,7 @@ zstd_dctx_alloc(void *opaque __unused, size_t size)
 	struct zstd_kmem *z = NULL;
 	enum zstd_kmem_type type = ZSTD_KMEM_UNKNOWN;
 
-	z = zstd_mempool_alloc(zstd_mempool_dctx, nbytes);
+	z = (struct zstd_kmem *)zstd_mempool_alloc(zstd_mempool_dctx, nbytes);
 	if (!z) {
 		/* try harder, decompression shall not fail */
 		z = vmem_alloc(nbytes, KM_SLEEP);
@@ -582,7 +577,6 @@ zstd_dctx_alloc(void *opaque __unused, size_t size)
 		return (NULL);
 	}
 
-	z->kmem_magic = ZSTD_KMEM_MAGIC;
 	z->kmem_type = type;
 	z->kmem_size = nbytes;
 
@@ -596,7 +590,6 @@ zstd_free(void *opaque __unused, void *ptr)
 	struct zstd_kmem *z = ptr - sizeof (struct zstd_kmem);
 	enum zstd_kmem_type type;
 
-	ASSERT3U(z->kmem_magic, ==, ZSTD_KMEM_MAGIC);
 	ASSERT3U(z->kmem_type, <, ZSTD_KMEM_COUNT);
 	ASSERT3U(z->kmem_type, >=, ZSTD_KMEM_UNKNOWN);
 	type = z->kmem_type;
