@@ -477,6 +477,8 @@ void dsl_dataset_create_remap_deadlist(dsl_dataset_t *ds, dmu_tx_t *tx);
 boolean_t dsl_dataset_remap_deadlist_exists(dsl_dataset_t *ds);
 void dsl_dataset_destroy_remap_deadlist(dsl_dataset_t *ds, dmu_tx_t *tx);
 
+int dsl_dataset_activate_compress_adaptive(const char *ddname);
+
 void dsl_dataset_activate_feature(uint64_t dsobj, spa_feature_t f, void *arg,
     dmu_tx_t *tx);
 void dsl_dataset_deactivate_feature(dsl_dataset_t *ds, spa_feature_t f,
