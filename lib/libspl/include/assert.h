@@ -63,32 +63,77 @@ libspl_assert(const char *buf, const char *file, const char *func, int line)
 #ifdef verify
 #undef verify
 #endif
+#ifdef NDEBUG
+#define	VERIFY(cond) (void) ((!(cond)))
+#define	verify(cond) (void) ((!(cond)))
 
 #define	PANIC(fmt, a...)						\
 	libspl_assertf(__FILE__, __FUNCTION__, __LINE__, fmt, ## a)
 
+#define	VERIFY3B(LEFT, OP, RIGHT)					\
+do {									\
+	const boolean_t __left __attribute__((unused)) = \
+		(boolean_t)(LEFT);	\
+	const boolean_t __right __attribute__((unused)) = \
+		(boolean_t)(RIGHT);	\
+} while (0)
+
+#define	VERIFY3S(LEFT, OP, RIGHT)					\
+do {									\
+	const int64_t __left __attribute__((unused)) = \
+		(int64_t)(LEFT);		\
+	const int64_t __right __attribute__((unused)) = \
+		(int64_t)(RIGHT);	\
+} while (0)
+
+#define	VERIFY3U(LEFT, OP, RIGHT)					\
+do {									\
+	const uint64_t __left __attribute__((unused)) = \
+		(uint64_t)(LEFT);	\
+	const uint64_t __right __attribute__((unused)) = \
+		(uint64_t)(RIGHT);	\
+} while (0)
+
+#define	VERIFY3P(LEFT, OP, RIGHT)					\
+do {									\
+	const uintptr_t __left __attribute__((unused)) = \
+		(uintptr_t)(LEFT);	\
+	const uintptr_t __right __attribute__((unused)) = \
+		(uintptr_t)(RIGHT);	\
+} while (0)
+
+#define	VERIFY0(LEFT)							\
+do {									\
+	const uint64_t __left __attribute__((unused)) = \
+		(uint64_t)(LEFT);	\
+} while (0)
+#else
+
 #define	VERIFY(cond)							\
 	(void) ((!(cond)) &&						\
-	    libspl_assert(#cond, __FILE__, __FUNCTION__, __LINE__))
+	    libspl_assert(#cond, "unknown", __FUNCTION__, __LINE__))
 
 #define	VERIFYF(cond, STR, ...)						\
 do {									\
 	if (!(cond))							\
-		libspl_assertf(__FILE__, __FUNCTION__, __LINE__,	\
+		libspl_assertf( "unknown", __FUNCTION__, __LINE__,	\
 		    "%s " STR, #cond,					\
 		    __VA_ARGS__);					\
 } while (0)
 
 #define	verify(cond)							\
 	(void) ((!(cond)) &&						\
-	    libspl_assert(#cond, __FILE__, __FUNCTION__, __LINE__))
+	    libspl_assert(#cond, "unknown", __FUNCTION__, __LINE__))
+
+#define	PANIC(fmt, a...)						\
+	libspl_assertf("unknown", __FUNCTION__, __LINE__, fmt, ## a)
 
 #define	VERIFY3B(LEFT, OP, RIGHT)					\
 do {									\
 	const boolean_t __left = (boolean_t)(LEFT);			\
 	const boolean_t __right = (boolean_t)(RIGHT);			\
 	if (!(__left OP __right))					\
-		libspl_assertf(__FILE__, __FUNCTION__, __LINE__,	\
+		libspl_assertf("unknown", __FUNCTION__, __LINE__,	\
 		    "%s %s %s (0x%llx %s 0x%llx)", #LEFT, #OP, #RIGHT,	\
 		    (u_longlong_t)__left, #OP, (u_longlong_t)__right);	\
 } while (0)
@@ -98,7 +143,7 @@ do {									\
 	const int64_t __left = (int64_t)(LEFT);				\
 	const int64_t __right = (int64_t)(RIGHT);			\
 	if (!(__left OP __right))					\
-		libspl_assertf(__FILE__, __FUNCTION__, __LINE__,	\
+		libspl_assertf("unknown", __FUNCTION__, __LINE__,	\
 		    "%s %s %s (0x%llx %s 0x%llx)", #LEFT, #OP, #RIGHT,	\
 		    (u_longlong_t)__left, #OP, (u_longlong_t)__right);	\
 } while (0)
@@ -108,7 +153,7 @@ do {									\
 	const uint64_t __left = (uint64_t)(LEFT);			\
 	const uint64_t __right = (uint64_t)(RIGHT);			\
 	if (!(__left OP __right))					\
-		libspl_assertf(__FILE__, __FUNCTION__, __LINE__,	\
+		libspl_assertf("unknown", __FUNCTION__, __LINE__,	\
 		    "%s %s %s (0x%llx %s 0x%llx)", #LEFT, #OP, #RIGHT,	\
 		    (u_longlong_t)__left, #OP, (u_longlong_t)__right);	\
 } while (0)
@@ -118,7 +163,7 @@ do {									\
 	const uintptr_t __left = (uintptr_t)(LEFT);			\
 	const uintptr_t __right = (uintptr_t)(RIGHT);			\
 	if (!(__left OP __right))					\
-		libspl_assertf(__FILE__, __FUNCTION__, __LINE__,	\
+		libspl_assertf("unknown", __FUNCTION__, __LINE__,	\
 		    "%s %s %s (%p %s %p)", #LEFT, #OP, #RIGHT,		\
 		    (void *)__left, #OP, (void *)__right);		\
 } while (0)
@@ -127,7 +172,7 @@ do {									\
 do {									\
 	const uint64_t __left = (uint64_t)(LEFT);			\
 	if (!(__left == 0))						\
-		libspl_assertf(__FILE__, __FUNCTION__, __LINE__,	\
+		libspl_assertf("unknown", __FUNCTION__, __LINE__,	\
 		    "%s == 0 (0x%llx == 0)", #LEFT,			\
 		    (u_longlong_t)__left);				\
 } while (0)
@@ -213,6 +258,8 @@ do {									\
 		    "%s == 0 (%p == 0) " STR, #LEFT,			\
 		    (u_longlong_t)__left, __VA_ARGS__);			\
 } while (0)
+=======
+#endif
 
 #ifdef assert
 #undef assert
@@ -262,11 +309,11 @@ do {									\
 #define	IMPLY(A, B) \
 	((void)(((!(A)) || (B)) || \
 	    libspl_assert("(" #A ") implies (" #B ")", \
-	    __FILE__, __FUNCTION__, __LINE__)))
+	    "unknown", __FUNCTION__, __LINE__)))
 #define	EQUIV(A, B) \
 	((void)((!!(A) == !!(B)) || \
 	    libspl_assert("(" #A ") is equivalent to (" #B ")", \
-	    __FILE__, __FUNCTION__, __LINE__)))
+	    "unknown", __FUNCTION__, __LINE__)))
 
 #endif  /* NDEBUG */
 
