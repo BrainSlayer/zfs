@@ -106,8 +106,49 @@ spl_assert(const char *buf, const char *file, const char *func, int line)
 #endif
 
 #define	PANIC(fmt, a...)						\
-	spl_panic(__FILE__, __FUNCTION__, __LINE__, fmt, ## a)
+	spl_panic("unknown", __FUNCTION__, __LINE__, fmt, ## a)
 
+#ifdef NDEBUG
+#define	VERIFY(cond) (void) ((!(cond)))
+
+#define	VERIFY3B(LEFT, OP, RIGHT)					\
+do {									\
+	const boolean_t __left __attribute__((unused)) = \
+		(boolean_t)(LEFT);	\
+	const boolean_t __right __attribute__((unused)) = \
+		(boolean_t)(RIGHT);	\
+} while (0)
+
+#define	VERIFY3S(LEFT, OP, RIGHT)					\
+do {									\
+	const int64_t __left __attribute__((unused)) = \
+		(int64_t)(LEFT);	\
+	const int64_t __right __attribute__((unused)) = \
+		(int64_t)(RIGHT);	\
+} while (0)
+
+#define	VERIFY3U(LEFT, OP, RIGHT)					\
+do {									\
+	const uint64_t __left __attribute__((unused)) = \
+		(uint64_t)(LEFT);	\
+	const uint64_t __right __attribute__((unused)) = \
+		(uint64_t)(RIGHT);	\
+} while (0)
+
+#define	VERIFY3P(LEFT, OP, RIGHT)					\
+do {									\
+	const uintptr_t __left __attribute__((unused)) = \
+		(uintptr_t)(LEFT);	\
+	const uintptr_t __right __attribute__((unused)) = \
+		(uintptr_t)(RIGHT);	\
+} while (0)
+
+#define	VERIFY0(LEFT)							\
+do {									\
+	const uint64_t __left __attribute__((unused)) = \
+		(uint64_t)(LEFT);	\
+} while (0)
+#else
 #define	VERIFY(cond)							\
 	(void) (unlikely(!(cond)) &&					\
 	    spl_assert("VERIFY(" #cond ") failed\n",			\
@@ -123,7 +164,7 @@ spl_assert(const char *buf, const char *file, const char *func, int line)
 		const boolean_t _verify3_left = (boolean_t)!!(LEFT);	\
 		const boolean_t _verify3_right = (boolean_t)!!(RIGHT);	\
 		if (unlikely(!(_verify3_left OP _verify3_right)))	\
-		    spl_panic(__FILE__, __FUNCTION__, __LINE__,		\
+		    spl_panic("unknown", __FUNCTION__, __LINE__,		\
 		    "VERIFY3B(" #LEFT ", "  #OP ", "  #RIGHT ") "	\
 		    "failed (%d " #OP " %d)\n",				\
 		    _verify3_left, _verify3_right);			\
@@ -133,7 +174,7 @@ spl_assert(const char *buf, const char *file, const char *func, int line)
 		const int64_t _verify3_left = (int64_t)(LEFT);		\
 		const int64_t _verify3_right = (int64_t)(RIGHT);	\
 		if (unlikely(!(_verify3_left OP _verify3_right)))	\
-		    spl_panic(__FILE__, __FUNCTION__, __LINE__,		\
+		    spl_panic("unknown", __FUNCTION__, __LINE__,		\
 		    "VERIFY3S(" #LEFT ", "  #OP ", "  #RIGHT ") "	\
 		    "failed (%lld " #OP " %lld)\n",			\
 		    (long long)_verify3_left,				\
@@ -144,7 +185,7 @@ spl_assert(const char *buf, const char *file, const char *func, int line)
 		const uint64_t _verify3_left = (uint64_t)(LEFT);	\
 		const uint64_t _verify3_right = (uint64_t)(RIGHT);	\
 		if (unlikely(!(_verify3_left OP _verify3_right)))	\
-		    spl_panic(__FILE__, __FUNCTION__, __LINE__,		\
+		    spl_panic("unknown", __FUNCTION__, __LINE__,		\
 		    "VERIFY3U(" #LEFT ", "  #OP ", "  #RIGHT ") "	\
 		    "failed (%llu " #OP " %llu)\n",			\
 		    (unsigned long long)_verify3_left,			\
@@ -155,7 +196,7 @@ spl_assert(const char *buf, const char *file, const char *func, int line)
 		const uintptr_t _verify3_left = (uintptr_t)(LEFT);	\
 		const uintptr_t _verify3_right = (uintptr_t)(RIGHT);	\
 		if (unlikely(!(_verify3_left OP _verify3_right)))	\
-		    spl_panic(__FILE__, __FUNCTION__, __LINE__,		\
+		    spl_panic("unknown", __FUNCTION__, __LINE__,		\
 		    "VERIFY3P(" #LEFT ", "  #OP ", "  #RIGHT ") "	\
 		    "failed (%px " #OP " %px)\n",			\
 		    (void *)_verify3_left,				\
@@ -165,7 +206,7 @@ spl_assert(const char *buf, const char *file, const char *func, int line)
 #define	VERIFY0(RIGHT)	do {						\
 		const int64_t _verify0_right = (int64_t)(RIGHT);	\
 		if (unlikely(!(0 == _verify0_right)))			\
-		    spl_panic(__FILE__, __FUNCTION__, __LINE__,		\
+		    spl_panic("unknown", __FUNCTION__, __LINE__,		\
 		    "VERIFY0(" #RIGHT ") failed (%lld)\n",		\
 		    (long long)_verify0_right);				\
 	} while (0)
@@ -252,10 +293,11 @@ spl_assert(const char *buf, const char *file, const char *func, int line)
 #define	VERIFY_IMPLY(A, B) \
 	((void)(likely((!(A)) || (B)) ||				\
 	    spl_assert("(" #A ") implies (" #B ")",			\
-	    __FILE__, __FUNCTION__, __LINE__)))
+	    "unknown", __FUNCTION__, __LINE__)))
 
 #define	VERIFY_EQUIV(A, B)	VERIFY3B(A, ==, B)
 
+#endif
 /*
  * Debugging disabled (--disable-debug)
  */
@@ -282,6 +324,12 @@ spl_assert(const char *buf, const char *file, const char *func, int line)
 #define	IMPLY(A, B)							\
 	((void) sizeof ((uintptr_t)(A)), (void) sizeof ((uintptr_t)(B)))
 #define	EQUIV(A, B)		\
+	((void) sizeof ((uintptr_t)(A)), (void) sizeof ((uintptr_t)(B)))
+
+#define	VERIFY_EQUIV(A, B)		\
+	((void) sizeof ((uintptr_t)(A)), (void) sizeof ((uintptr_t)(B)))
+
+#define	VERIFY_IMPLY(A, B)		\
 	((void) sizeof ((uintptr_t)(A)), (void) sizeof ((uintptr_t)(B)))
 
 /*
