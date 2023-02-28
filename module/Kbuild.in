@@ -265,7 +265,7 @@ ZFS_ZSTD_FLAGS := -O3
 ZFS_ZSTD_FLAGS += -fno-tree-vectorize
 
 # SSE register return with SSE disabled if -march=znverX is passed
-ZFS_ZSTD_FLAGS += -U__BMI__
+ZFS_ZSTD_FLAGS += -U__BMI__ -U__BMI2__ -DZSTD_NO_TRACE
 
 # Quiet warnings about frame size due to unused code in unmodified zstd lib
 ZFS_ZSTD_FLAGS += -Wframe-larger-than=20480
@@ -280,6 +280,7 @@ ZSTD_UPSTREAM_OBJS := \
 	lib/common/fse_decompress.o \
 	lib/common/pool.o \
 	lib/common/zstd_common.o \
+	lib/common/xxhash.o \
 	lib/compress/fse_compress.o \
 	lib/compress/hist.o \
 	lib/compress/huf_compress.o \
@@ -297,11 +298,14 @@ ZSTD_UPSTREAM_OBJS := \
 	lib/decompress/zstd_decompress.o \
 	lib/decompress/zstd_decompress_block.o
 
+ZSTD_OBJS_X86_64 := lib/decompress/huf_decompress_amd64.o
+
 zfs-objs += $(addprefix zstd/,$(ZSTD_OBJS) $(ZSTD_UPSTREAM_OBJS))
+zfs-$(CONFIG_X86_64)   += $(addprefix zstd/,$(ZSTD_OBJS_X86_64))
 
 # Disable aarch64 neon SIMD instructions for kernel mode
-$(addprefix $(obj)/zstd/,$(ZSTD_OBJS) $(ZSTD_UPSTREAM_OBJS)) : ccflags-y += -I$(zstd_include) $(ZFS_ZSTD_FLAGS)
-$(addprefix $(obj)/zstd/,$(ZSTD_OBJS) $(ZSTD_UPSTREAM_OBJS)) : asflags-y += -I$(zstd_include)
+$(addprefix $(obj)/zstd/,$(ZSTD_OBJS) $(ZSTD_UPSTREAM_OBJS) $(ZSTD_OBJS_X86_64)) : ccflags-y += -I$(zstd_include) $(ZFS_ZSTD_FLAGS)
+$(addprefix $(obj)/zstd/,$(ZSTD_OBJS) $(ZSTD_UPSTREAM_OBJS) $(ZSTD_OBJS_X86_64)) : asflags-y += -I$(zstd_include)
 $(addprefix $(obj)/zstd/,$(ZSTD_UPSTREAM_OBJS)) : ccflags-y += -include $(zstd_include)/aarch64_compat.h -include $(zstd_include)/zstd_compat_wrapper.h -Wp,-w
 $(obj)/zstd/zfs_zstd.o : ccflags-y += -include $(zstd_include)/zstd_compat_wrapper.h
 
