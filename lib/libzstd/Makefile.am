@@ -1,9 +1,10 @@
 libzstd_la_CFLAGS  = $(AM_CFLAGS) $(LIBRARY_CFLAGS)
 # -fno-tree-vectorize is set for gcc in zstd/common/compiler.h
 # Set it for other compilers, too.
-libzstd_la_CFLAGS += -fno-tree-vectorize
+libzstd_la_CFLAGS += -fno-tree-vectorize -DZSTD_NO_TRACE
 
 noinst_LTLIBRARIES += libzstd.la
+CPPCHECKTARGETS    += libzstd.la
 
 nodist_libzstd_la_SOURCES = \
 	module/zstd/lib/common/entropy_common.c \
@@ -11,6 +12,7 @@ nodist_libzstd_la_SOURCES = \
 	module/zstd/lib/common/fse_decompress.c \
 	module/zstd/lib/common/pool.c \
 	module/zstd/lib/common/zstd_common.c \
+	module/zstd/lib/common/xxhash.c \
 	module/zstd/lib/compress/fse_compress.c \
 	module/zstd/lib/compress/hist.c \
 	module/zstd/lib/compress/huf_compress.c \
@@ -28,5 +30,9 @@ nodist_libzstd_la_SOURCES = \
 	module/zstd/lib/decompress/zstd_decompress.c \
 	module/zstd/lib/decompress/zstd_decompress_block.c \
 	module/zstd/zfs_zstd.c
+
+if TARGET_CPU_X86_64
+nodist_libzstd_la_SOURCES += module/zstd/lib/decompress/huf_decompress_amd64.S
+endif
 
 libzstd_la_CFLAGS += -include $(top_srcdir)/module/zstd/include/zstd_compat_wrapper.h -fno-tree-vectorize -Wp,-w $(AM_CFLAGS)
