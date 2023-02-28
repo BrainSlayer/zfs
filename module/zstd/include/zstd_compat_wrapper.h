@@ -208,6 +208,8 @@
 #define	ZSTD_CCtxParams_reset zfs_ZSTD_CCtxParams_reset
 #define	ZSTD_CCtxParams_setParameter zfs_ZSTD_CCtxParams_setParameter
 #define	ZSTD_CCtx_getParameter zfs_ZSTD_CCtx_getParameter
+#define	ZSTD_CCtx_setFParams zfs_ZSTD_CCtx_setFParams
+#define	ZSTD_CCtx_setParams zfs_ZSTD_CCtx_setParams
 #define	ZSTD_CCtx_loadDictionary zfs_ZSTD_CCtx_loadDictionary
 #define	ZSTD_CCtx_loadDictionary_advanced zfs_ZSTD_CCtx_loadDictionary_advanced
 #define	ZSTD_CCtx_loadDictionary_byReference \
@@ -252,6 +254,10 @@
 #define	ZSTD_checkCParams zfs_ZSTD_checkCParams
 #define	ZSTD_checkContinuity zfs_ZSTD_checkContinuity
 #define	ZSTD_compress zfs_ZSTD_compress
+#define	ZSTD_compressContinue_public zfs_ZSTD_compressContinue_public
+#define	ZSTD_compressBlock_deprecated zfs_ZSTD_compressBlock_deprecated
+#define	ZSTD_compressEnd_public zfs_ZSTD_compressEnd_public
+#define	ZSTD_compressBegin_usingCDict_deprecated zfs_ZSTD_compressBegin_usingCDict_deprecated
 #define	ZSTD_compress2 zfs_ZSTD_compress2
 #define	ZSTD_compressBegin zfs_ZSTD_compressBegin
 #define	ZSTD_compressBegin_advanced zfs_ZSTD_compressBegin_advanced
@@ -352,6 +358,7 @@
 #define	ZSTD_decompressBegin_usingDict zfs_ZSTD_decompressBegin_usingDict
 #define	ZSTD_decompressBlock zfs_ZSTD_decompressBlock
 #define	ZSTD_decompressBlock_internal zfs_ZSTD_decompressBlock_internal
+#define	ZSTD_decompressBlock_deprecated zfs_ZSTD_decompressBlock_deprecated
 #define	ZSTD_decompressBound zfs_ZSTD_decompressBound
 #define	ZSTD_decompressContinue zfs_ZSTD_decompressContinue
 #define	ZSTD_decompressContinueStream zfs_ZSTD_decompressContinueStream
@@ -512,6 +519,8 @@
 #define	HUF_readDTableX1_wksp_bmi2 zfs_HUF_readDTableX1_wksp_bmi2
 #define	HUF_readStats_body_default zfs_HUF_readStats_body_default
 #define	HUF_readStats_wksp zfs_HUF_readStats_wksp
+#define HUF_minTableLog zfs_HUF_minTableLog
+#define HUF_cardinality zfs_HUF_cardinality
 #define	ZSTD_CCtx_init_compressStream2 zfs_ZSTD_CCtx_init_compressStream2
 #define	ZSTD_CCtx_refThreadPool zfs_ZSTD_CCtx_refThreadPool
 #define	ZSTD_DCtx_getParameter zfs_ZSTD_DCtx_getParameter
@@ -569,6 +578,10 @@
 #define	ZSTD_isSkippableFrame zfs_ZSTD_isSkippableFrame
 #define	ZSTD_readSkippableFrame zfs_ZSTD_readSkippableFrame
 #define	ZSTD_buildBlockEntropyStats zfs_ZSTD_buildBlockEntropyStats
+#define ZSTD_decompressionMargin zfs_ZSTD_decompressionMargin
+#define ZSTD_sequenceBound zfs_ZSTD_sequenceBound
+#define ZSTD_registerSequenceProducer zfs_ZSTD_registerSequenceProducer
+#define ZSTD_CCtx_setCParams zfs_ZSTD_CCtx_setCParams
 #define	XXH64_finalize zfs_XXH64_finalize
 #define	XXH_INLINE_XXH64_digest zfs_XXH_INLINE_XXH64_digest
 #define ZSTD_XXH_versionNumber zfs_ZSTD_XXH_versionNumber
@@ -590,3 +603,4 @@
 #define ZSTD_XXH64_digest zfs_ZSTD_XXH64_digest
 #define ZSTD_XXH64_canonicalFromHash zfs_ZSTD_XXH64_canonicalFromHash
 #define ZSTD_XXH64_hashFromCanonical zfs_ZSTD_XXH64_hashFromCanonical
+#define POOL_joinJobs zfs_POOL_joinJobs
