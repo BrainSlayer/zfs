@@ -200,7 +200,7 @@ makedev(unsigned int major, unsigned int minor)
 	(((type)(x) ^ (type)(y)) < ((type)(x) & (type)(y)))
 
 #define	SET_ERROR(err) \
-	(__set_error(__FILE__, __func__, __LINE__, err), err)
+	(__set_error("unknown", __func__, __LINE__, err), err)
 
 #include <linux/sort.h>
 #define	qsort(base, num, size, cmp)		\
