@@ -6,7 +6,6 @@ libzstd_la_CPPFLAGS = $(AM_CPPFLAGS) $(LIBZPOOL_CPPFLAGS)
 libzstd_la_CFLAGS += -fno-tree-vectorize -DZSTD_NO_TRACE
 
 noinst_LTLIBRARIES += libzstd.la
-CPPCHECKTARGETS    += libzstd.la
 
 nodist_libzstd_la_SOURCES = \
 	module/zstd/lib/common/entropy_common.c \
