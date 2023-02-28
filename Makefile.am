@@ -126,6 +126,7 @@ cstyle:
 		! -name 'zstd_compat_wrapper.h' \
 		! -path './module/zstd/lib/*' \
 		! -path './include/sys/lua/*' \
+		! -path './module/zstd/include/portability_macros.h' \
 		! -path './module/lua/l*.[ch]' \
 		! -path './module/zfs/lz4.c' \
 		$(cstyle_line)
