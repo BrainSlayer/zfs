@@ -697,7 +697,7 @@ void HUF_decompress4X1_usingDTable_internal_fast_c_loop(HUF_DecompressFastArgs* 
 
     /* Copy the arguments to local variables */
     ZSTD_memcpy(&bits, &args->bits, sizeof(bits));
-    ZSTD_memcpy(&ip, &args->ip, sizeof(ip));
+    ZSTD_memcpy((void*)(&ip), &args->ip, sizeof(ip));
     ZSTD_memcpy(&op, &args->op, sizeof(op));
 
     assert(MEM_isLittleEndian());
@@ -780,7 +780,7 @@ _out:
 
     /* Save the final values of each of the state variables back to args. */
     ZSTD_memcpy(&args->bits, &bits, sizeof(bits));
-    ZSTD_memcpy(&args->ip, &ip, sizeof(ip));
+    ZSTD_memcpy((void*)(&args->ip), &ip, sizeof(ip));
     ZSTD_memcpy(&args->op, &op, sizeof(op));
 }
 
@@ -1477,7 +1477,7 @@ void HUF_decompress4X2_usingDTable_internal_fast_c_loop(HUF_DecompressFastArgs* 
 
     /* Copy the arguments to local registers. */
     ZSTD_memcpy(&bits, &args->bits, sizeof(bits));
-    ZSTD_memcpy(&ip, &args->ip, sizeof(ip));
+    ZSTD_memcpy((void*)(&ip), &args->ip, sizeof(ip));
     ZSTD_memcpy(&op, &args->op, sizeof(op));
 
     oend[0] = op[1];
@@ -1600,7 +1600,7 @@ _out:
 
     /* Save the final values of each of the state variables back to args. */
     ZSTD_memcpy(&args->bits, &bits, sizeof(bits));
-    ZSTD_memcpy(&args->ip, &ip, sizeof(ip));
+    ZSTD_memcpy((void*)(&args->ip), &ip, sizeof(ip));
     ZSTD_memcpy(&args->op, &op, sizeof(op));
 }
 
