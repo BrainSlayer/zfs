@@ -258,7 +258,6 @@ do {									\
 		    "%s == 0 (%p == 0) " STR, #LEFT,			\
 		    (u_longlong_t)__left, __VA_ARGS__);			\
 } while (0)
-=======
 #endif
 
 #ifdef assert
