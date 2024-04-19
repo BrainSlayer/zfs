@@ -110,6 +110,7 @@ spl_assert(const char *buf, const char *file, const char *func, int line)
 
 #ifdef NDEBUG
 #define	VERIFY(cond) (void) ((!(cond)))
+#define	VERIFYF(cond) do { } while(0)
 
 #define	VERIFY3B(LEFT, OP, RIGHT)					\
 do {									\
