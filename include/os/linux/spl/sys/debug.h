@@ -149,6 +149,12 @@ do {									\
 	const uint64_t __left __attribute__((unused)) = \
 		(uint64_t)(LEFT);	\
 } while (0)
+
+#define	VERIFY0P(RIGHT)							\
+do {									\
+	const uintptr_t __right __attribute__((unused)) = \
+		(uintptr_t)(RIGHT);	\
+} while (0)
 #else
 #define	VERIFY(cond)							\
 	(void) (unlikely(!(cond)) &&					\
