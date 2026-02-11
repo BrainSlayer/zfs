@@ -624,6 +624,7 @@ zfs_zstd_decompress_level_buf(void *s_start, void *d_start, size_t s_len,
 	uint32_t c_len;
 	const zfs_zstdhdr_t *hdr;
 	zfs_zstdhdr_t hdr_copy;
+	uint32_t version;
 
 	hdr = (const zfs_zstdhdr_t *)s_start;
 	c_len = BE_32(hdr->c_len);
@@ -640,15 +641,21 @@ zfs_zstd_decompress_level_buf(void *s_start, void *d_start, size_t s_len,
 	 * incompatibility occurs, it has to be handled accordingly.
 	 * The version can be accessed via `hdr_copy.version`.
 	 */
+	version = zfs_get_hdrversion(&hdr_copy);
 
 	/*
 	 * Convert and check the level
 	 * An invalid level is a strong indicator for data corruption! In such
 	 * case return an error so the upper layers can try to fix it.
 	 */
-	if (zstd_enum_to_level(curlevel, &zstd_level)) {
+	if (version >= 10405 &&
+	    zstd_enum_to_level(curlevel, &zstd_level)) {
 		ZSTDSTAT_BUMP(zstd_stat_dec_inval);
 		return (1);
+	}
+
+	if (version < 10405) {
+		zfs_set_hdrlevel(&hdr_copy, version);
 	}
 
 	ASSERT3U(d_len, >=, s_len);
@@ -666,8 +673,15 @@ zfs_zstd_decompress_level_buf(void *s_start, void *d_start, size_t s_len,
 		return (1);
 	}
 
-	/* Set header type to "magicless" */
-	ZSTD_DCtx_setParameter(dctx, ZSTD_d_format, ZSTD_f_zstd1_magicless);
+	/*
+	 * special case for supporting older development versions
+	 * which did contain the magic
+	 */
+	if (version >= 10405) {
+		/* Set header type to "magicless" */
+		ZSTD_DCtx_setParameter(dctx, ZSTD_d_format,
+		    ZSTD_f_zstd1_magicless);
+	}
 
 	/* Decompress the data and release the context */
 	result = ZSTD_decompressDCtx(dctx, d_start, d_len, hdr->data, c_len);
