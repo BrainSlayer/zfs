@@ -6,7 +6,7 @@ include $(srcdir)/%D%/zcp/Makefile.am
 
 if BUILD_LINUX
 include $(srcdir)/%D%/bpftrace/Makefile.am
-include $(srcdir)/%D%/dracut/Makefile.am
+#include $(srcdir)/%D%/dracut/Makefile.am
 include $(srcdir)/%D%/initramfs/Makefile.am
 endif
 
